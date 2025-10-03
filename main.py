@@ -341,6 +341,16 @@ class Game:
                 lava.update(frame, self.time_multiplier if not self.time_stop_active else 0)
                 if player_rect.colliderect(lava.get_rect()):
                     self.load_level(self.current_level)
+                    return
+        
+        player_rect = pygame.Rect(self.player.x, self.player.y, self.player.width, self.player.height)
+        for y, line in enumerate(self.level_map):
+            for x, char in enumerate(line):
+                if char == '+':
+                    lava_rect = pygame.Rect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
+                    if player_rect.colliderect(lava_rect):
+                        self.load_level(self.current_level)
+                        return
                     
         if self.time_stop_cooldown_timer > 0:
             self.time_stop_cooldown_timer -= frame / 1000.0
