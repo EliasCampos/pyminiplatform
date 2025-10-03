@@ -83,13 +83,13 @@ class Player:
     def __init__(self, x, y):
         self.x = x
         self.y = y
-        self.width = BLOCK_SIZE - 4
-        self.height = BLOCK_SIZE - 4
+        self.width = 18
+        self.height = 18
         self.vel_x = 0
         self.vel_y = 0
-        self.speed = 0.15
-        self.jump_power = 0.4
-        self.gravity = 0.001
+        self.speed = 0.2
+        self.jump_power = 0.35
+        self.gravity = 0.0015
         self.on_ground = False
         self.camera_x = 0
         self.camera_y = 0
@@ -101,28 +101,23 @@ class Player:
     def update(self, frame, level_map, time_scale=1.0):
         keys = pygame.key.get_pressed()
         
-        scaled_frame = frame * time_scale
-        
         if keys[pygame.K_LEFT]:
-            self.vel_x -= self.speed * scaled_frame
-        if keys[pygame.K_RIGHT]:
-            self.vel_x += self.speed * scaled_frame
+            self.vel_x = -self.speed * time_scale
+        elif keys[pygame.K_RIGHT]:
+            self.vel_x = self.speed * time_scale
+        else:
+            self.vel_x = 0
             
         if keys[pygame.K_UP] and self.on_ground:
             self.vel_y = -self.jump_power
             self.on_ground = False
             
-        self.vel_y += self.gravity * scaled_frame
-        
-        if abs(self.vel_x) < 0.001:
-            self.vel_x = 0
-        else:
-            self.vel_x *= 0.85
+        self.vel_y += self.gravity * frame * time_scale
             
-        self.x += self.vel_x * scaled_frame
+        self.x += self.vel_x * frame
         self.check_collision_x(level_map)
         
-        self.y += self.vel_y * scaled_frame
+        self.y += self.vel_y * frame
         self.check_collision_y(level_map)
         
         self.camera_x = self.x - WINDOW_WIDTH / 2 + self.width / 2
