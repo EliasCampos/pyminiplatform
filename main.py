@@ -88,7 +88,7 @@ class Player:
         self.vel_x = 0
         self.vel_y = 0
         self.speed = 0.2
-        self.jump_power = 0.35
+        self.jump_power = 0.7
         self.gravity = 0.0015
         self.on_ground = False
         self.camera_x = 0
