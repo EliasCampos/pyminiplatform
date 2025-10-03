@@ -1,110 +1,243 @@
 import pygame
 import sys
-import random
+import math
 
 pygame.init()
 
 WINDOW_WIDTH = 800
 WINDOW_HEIGHT = 600
+BLOCK_SIZE = 20
 FPS = 60
 
 WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-BLUE = (100, 149, 237)
-GREEN = (34, 139, 34)
-YELLOW = (255, 215, 0)
-RED = (220, 20, 60)
-GRAY = (169, 169, 169)
+WALL_COLOR = (60, 60, 60)
+LAVA_COLOR = (255, 100, 100)
+PLAYER_COLOR = (100, 100, 255)
+COIN_COLOR = (255, 215, 0)
+
+LEVEL_MAPS = [
+    [
+        "............................................................................##..",
+        ".............................................................................#..",
+        ".............................................................................#..",
+        ".............................................................................#..",
+        ".............................................................................#..",
+        ".............................................................................#..",
+        "..##..............................................................###........#..",
+        "..#................................................##......##....##+##.......#..",
+        "..#.................................o.o......##..................#+++#.......#..",
+        "..#..............................................................##+##.......#..",
+        "..#................................#####..........................#v#........#..",
+        "..#..........................................................................#..",
+        "..#.......................................o.o................................#..",
+        "..#.....................o....................................................#..",
+        "..#..@...................................#####.............................o.#..",
+        "..#..........####.......o....................................................#..",
+        "..#..........#..#................................................#####.......#..",
+        "..############..###############...####################.....#######...#########..",
+        "..............................#...#..................#.....#....................",
+        "..............................#+++#..................#+++++#....................",
+        "..............................#+++#..................#+++++#....................",
+        "..............................#####..................#######....................",
+        "................................................................................",
+        "................................................................................",
+    ],
+    [
+        "................................................................................",
+        "................................................................................",
+        "....###############################.............................................",
+        "...##.............................##########################################....",
+        "...#.......................................................................##...",
+        "...#....o...................................................................#...",
+        "...#................................................=.......................#...",
+        "...#.o........################...................o..o...........|........o..#...",
+        "...#.........................#..............................................#...",
+        "...#....o....................##########.....###################....##########...",
+        "...#..................................#+++++#.................#....#............",
+        "...###############....oo......=o.o.o..#######.###############.#....#............",
+        ".....#...............o..o.............#.......#......#........#....#............",
+        ".....#....................#############..######.####.#.########....########.....",
+        ".....#.............########..............#...........#.#..................#.....",
+        ".....#..........####......####...#####################.#..................#.....",
+        ".....#........###............###.......................########....########.....",
+        ".....#.......##................#########################......#....#............",
+        ".....#.......#................................................#....#............",
+        ".....###......................................................#....#............",
+        ".......#...............o...........................................#............",
+        ".......#...............................................o...........#............",
+        ".......#########......###.....############.........................##...........",
+        ".............#..................#........#####....#######.o.........########....",
+        ".............#++++++++++++++++++#............#....#.....#..................#....",
+        ".............#++++++++++++++++++#..........###....###...####.o.............#....",
+        ".............####################..........#........#......#.....|.........#....",
+        "...........................................#++++++++#......####........@...#....",
+        "...........................................#++++++++#.........#............#....",
+        "...........................................#++++++++#.........##############....",
+        "...........................................##########...........................",
+        "................................................................................",
+    ],
+]
+
 
 class Player:
     def __init__(self, x, y):
         self.x = x
         self.y = y
-        self.width = 32
-        self.height = 48
+        self.width = BLOCK_SIZE - 4
+        self.height = BLOCK_SIZE - 4
         self.vel_x = 0
         self.vel_y = 0
-        self.speed = 5
-        self.jump_power = 15
-        self.gravity = 0.8
+        self.speed = 0.15
+        self.jump_power = 0.4
+        self.gravity = 0.001
         self.on_ground = False
+        self.camera_x = 0
+        self.camera_y = 0
         
-    def update(self, platforms, time_scale=1.0):
+    def set_position(self, x, y):
+        self.x = x
+        self.y = y
+        
+    def update(self, frame, level_map, time_scale=1.0):
         keys = pygame.key.get_pressed()
         
-        self.vel_x = 0
-        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-            self.vel_x = -self.speed * time_scale
-        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-            self.vel_x = self.speed * time_scale
+        scaled_frame = frame * time_scale
+        
+        if keys[pygame.K_LEFT]:
+            self.vel_x -= self.speed * scaled_frame
+        if keys[pygame.K_RIGHT]:
+            self.vel_x += self.speed * scaled_frame
             
-        if (keys[pygame.K_SPACE] or keys[pygame.K_UP] or keys[pygame.K_w]) and self.on_ground:
+        if keys[pygame.K_UP] and self.on_ground:
             self.vel_y = -self.jump_power
             self.on_ground = False
             
-        self.vel_y += self.gravity * time_scale
+        self.vel_y += self.gravity * scaled_frame
         
-        self.x += self.vel_x
-        self.check_collision_x(platforms)
-        
-        self.y += self.vel_y
-        self.check_collision_y(platforms)
-        
-        if self.y > WINDOW_HEIGHT:
-            self.x = 100
-            self.y = 100
-            self.vel_y = 0
+        if abs(self.vel_x) < 0.001:
+            self.vel_x = 0
+        else:
+            self.vel_x *= 0.85
             
-    def check_collision_x(self, platforms):
-        player_rect = pygame.Rect(self.x, self.y, self.width, self.height)
-        for platform in platforms:
-            if player_rect.colliderect(platform):
-                if self.vel_x > 0:
-                    self.x = platform.left - self.width
-                elif self.vel_x < 0:
-                    self.x = platform.right
-                    
-    def check_collision_y(self, platforms):
-        player_rect = pygame.Rect(self.x, self.y, self.width, self.height)
+        self.x += self.vel_x * scaled_frame
+        self.check_collision_x(level_map)
+        
+        self.y += self.vel_y * scaled_frame
+        self.check_collision_y(level_map)
+        
+        self.camera_x = self.x - WINDOW_WIDTH / 2 + self.width / 2
+        self.camera_y = self.y - WINDOW_HEIGHT / 2 + self.height / 2
+        
+    def check_collision_x(self, level_map):
+        left = int(self.x / BLOCK_SIZE)
+        right = int((self.x + self.width) / BLOCK_SIZE)
+        top = int(self.y / BLOCK_SIZE)
+        bottom = int((self.y + self.height - 1) / BLOCK_SIZE)
+        
+        for y in range(max(0, top), min(len(level_map), bottom + 1)):
+            for x in range(max(0, left), min(len(level_map[y]), right + 1)):
+                if level_map[y][x] == '#':
+                    block_rect = pygame.Rect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
+                    player_rect = pygame.Rect(self.x, self.y, self.width, self.height)
+                    if player_rect.colliderect(block_rect):
+                        if self.vel_x > 0:
+                            self.x = block_rect.left - self.width
+                        elif self.vel_x < 0:
+                            self.x = block_rect.right
+                        self.vel_x = 0
+                        
+    def check_collision_y(self, level_map):
+        left = int(self.x / BLOCK_SIZE)
+        right = int((self.x + self.width) / BLOCK_SIZE)
+        top = int(self.y / BLOCK_SIZE)
+        bottom = int((self.y + self.height - 1) / BLOCK_SIZE)
+        
         self.on_ground = False
-        for platform in platforms:
-            if player_rect.colliderect(platform):
-                if self.vel_y > 0:
-                    self.y = platform.top - self.height
-                    self.vel_y = 0
-                    self.on_ground = True
-                elif self.vel_y < 0:
-                    self.y = platform.bottom
-                    self.vel_y = 0
-                    
-    def get_rect(self):
-        return pygame.Rect(self.x, self.y, self.width, self.height)
+        for y in range(max(0, top), min(len(level_map), bottom + 1)):
+            for x in range(max(0, left), min(len(level_map[y]), right + 1)):
+                if level_map[y][x] == '#':
+                    block_rect = pygame.Rect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
+                    player_rect = pygame.Rect(self.x, self.y, self.width, self.height)
+                    if player_rect.colliderect(block_rect):
+                        if self.vel_y > 0:
+                            self.y = block_rect.top - self.height
+                            self.vel_y = 0
+                            self.on_ground = True
+                        elif self.vel_y < 0:
+                            self.y = block_rect.bottom
+                            self.vel_y = 0
+                            
+    def get_camera_offset(self):
+        return (self.camera_x, self.camera_y)
         
     def draw(self, screen):
-        pygame.draw.rect(screen, BLUE, (self.x, self.y, self.width, self.height))
-        pygame.draw.circle(screen, WHITE, (int(self.x + self.width * 0.3), int(self.y + self.height * 0.25)), 4)
-        pygame.draw.circle(screen, WHITE, (int(self.x + self.width * 0.7), int(self.y + self.height * 0.25)), 4)
+        draw_x = self.x - self.camera_x
+        draw_y = self.y - self.camera_y
+        pygame.draw.rect(screen, PLAYER_COLOR, (draw_x, draw_y, self.width, self.height))
 
 
 class Coin:
     def __init__(self, x, y):
         self.x = x
         self.y = y
-        self.radius = 12
+        self.radius = BLOCK_SIZE // 3
         self.collected = False
-        self.animation_offset = random.uniform(0, 360)
+        self.animation_offset = 0
         
-    def update(self, time):
-        pass
+    def update(self, frame, time_scale=1.0):
+        self.animation_offset += frame * time_scale * 0.01
         
-    def draw(self, screen, time):
+    def draw(self, screen, camera_x, camera_y):
         if not self.collected:
-            offset = pygame.math.Vector2(0, 3 * pygame.math.Vector2(0, 1).rotate(time * 100 + self.animation_offset).y)
-            pygame.draw.circle(screen, YELLOW, (int(self.x + offset.x), int(self.y + offset.y)), self.radius)
-            pygame.draw.circle(screen, (255, 255, 150), (int(self.x + offset.x - 3), int(self.y + offset.y - 3)), 4)
+            draw_x = self.x - camera_x + BLOCK_SIZE // 2
+            draw_y = self.y - camera_y + BLOCK_SIZE // 2 + math.sin(self.animation_offset) * 3
+            pygame.draw.circle(screen, COIN_COLOR, (int(draw_x), int(draw_y)), self.radius)
+            pygame.draw.circle(screen, (255, 255, 150), (int(draw_x - 2), int(draw_y - 2)), 3)
             
     def get_rect(self):
-        return pygame.Rect(self.x - self.radius, self.y - self.radius, self.radius * 2, self.radius * 2)
+        return pygame.Rect(self.x, self.y, BLOCK_SIZE, BLOCK_SIZE)
+
+
+class Lava:
+    def __init__(self, x, y, is_vertical, is_horizontal):
+        self.x = x
+        self.y = y
+        self.width = BLOCK_SIZE
+        self.height = BLOCK_SIZE
+        self.is_vertical = is_vertical
+        self.is_horizontal = is_horizontal
+        self.animation_offset = 0
+        
+    def update(self, frame, time_scale=1.0):
+        self.animation_offset += frame * time_scale * 0.01
+        
+    def draw(self, screen, camera_x, camera_y, time_stop_factor):
+        draw_x = self.x - camera_x
+        draw_y = self.y - camera_y
+        
+        color = self.create_time_stop_color(LAVA_COLOR, time_stop_factor)
+        
+        if self.is_vertical or self.is_horizontal:
+            offset_x = 0
+            offset_y = 0
+            if self.is_vertical:
+                offset_y = math.sin(self.animation_offset) * BLOCK_SIZE // 4
+            if self.is_horizontal:
+                offset_x = math.sin(self.animation_offset) * BLOCK_SIZE // 4
+            pygame.draw.rect(screen, color, (draw_x + offset_x, draw_y + offset_y, self.width, self.height))
+        else:
+            pygame.draw.rect(screen, color, (draw_x, draw_y, self.width, self.height))
+            
+    def create_time_stop_color(self, color, time_stop_factor):
+        if 0 < time_stop_factor < 1:
+            r = int(((255 - color[0]) * (1 - time_stop_factor) + color[0] * time_stop_factor) / 2)
+            g = int(((255 - color[1]) * (1 - time_stop_factor) + color[1] * time_stop_factor) / 2)
+            b = int(((255 - color[2]) * (1 - time_stop_factor) + color[2] * time_stop_factor) / 2)
+            return (r, g, b)
+        return color
+        
+    def get_rect(self):
+        return pygame.Rect(self.x, self.y, self.width, self.height)
 
 
 class Game:
@@ -114,26 +247,11 @@ class Game:
         self.clock = pygame.time.Clock()
         self.running = True
         
+        self.current_level = 0
+        self.level_map = []
         self.player = Player(100, 100)
-        
-        self.platforms = [
-            pygame.Rect(0, WINDOW_HEIGHT - 40, WINDOW_WIDTH, 40),
-            pygame.Rect(150, 450, 150, 20),
-            pygame.Rect(400, 380, 150, 20),
-            pygame.Rect(600, 300, 150, 20),
-            pygame.Rect(300, 250, 120, 20),
-            pygame.Rect(100, 180, 100, 20),
-            pygame.Rect(500, 150, 150, 20),
-        ]
-        
-        self.coins = [
-            Coin(225, 410),
-            Coin(475, 340),
-            Coin(675, 260),
-            Coin(360, 210),
-            Coin(150, 140),
-            Coin(575, 110),
-        ]
+        self.coins = []
+        self.lavas = []
         
         self.score = 0
         self.game_time = 0
@@ -147,6 +265,39 @@ class Game:
         
         self.font = pygame.font.Font(None, 36)
         self.small_font = pygame.font.Font(None, 24)
+        
+        self.load_level(self.current_level)
+        
+    def load_level(self, level_index):
+        if level_index >= len(LEVEL_MAPS):
+            return False
+            
+        self.level_map = LEVEL_MAPS[level_index]
+        self.coins = []
+        self.lavas = []
+        self.player = Player(100, 100)
+        self.time_multiplier = 1.0
+        
+        for y, line in enumerate(self.level_map):
+            for x, char in enumerate(line):
+                pos_x = x * BLOCK_SIZE
+                pos_y = y * BLOCK_SIZE
+                
+                if char == 'o':
+                    self.coins.append(Coin(pos_x, pos_y))
+                elif char == '@':
+                    self.player.set_position(pos_x, pos_y)
+                elif char in ['v', '|', '=']:
+                    is_vert = (char == 'v' or char == '|')
+                    is_horiz = (char == '=')
+                    self.lavas.append(Lava(pos_x, pos_y, is_vert, is_horiz))
+                    
+        if len(self.coins) > 0:
+            self.time_acceleration_delta = 0.1
+        else:
+            self.time_acceleration_delta = 0
+            
+        return True
         
     def handle_events(self):
         for event in pygame.event.get():
@@ -162,76 +313,122 @@ class Game:
             self.time_stop_timer = self.time_stop_duration
             self.time_stop_cooldown_timer = self.time_stop_cooldown
             
-    def update(self, dt):
+    def get_time_stop_factor(self):
+        if not self.time_stop_active:
+            return 1.0
+        if self.time_stop_timer > self.time_stop_duration - 1:
+            return (self.time_stop_timer - (self.time_stop_duration - 1))
+        return 0.0
+            
+    def update(self, frame):
         if self.time_stop_active:
-            self.time_stop_timer -= dt
+            self.time_stop_timer -= frame / 1000.0
             if self.time_stop_timer <= 0:
                 self.time_stop_active = False
                 self.time_stop_timer = 0
             
-            self.player.update(self.platforms, time_scale=1.0)
+            self.player.update(frame, self.level_map, time_scale=1.0)
         else:
-            adjusted_dt = dt * self.time_multiplier
-            self.game_time += adjusted_dt
-            self.player.update(self.platforms, time_scale=self.time_multiplier)
+            self.game_time += (frame / 1000.0) * self.time_multiplier
+            self.player.update(frame, self.level_map, time_scale=self.time_multiplier)
             
-            player_rect = self.player.get_rect()
+            player_rect = pygame.Rect(self.player.x, self.player.y, self.player.width, self.player.height)
             for coin in self.coins:
                 if not coin.collected and player_rect.colliderect(coin.get_rect()):
                     coin.collected = True
                     self.score += 10
-                    self.time_multiplier += 0.1
+                    self.time_multiplier += self.time_acceleration_delta
+                    
+            for coin in self.coins:
+                coin.update(frame, self.time_multiplier if not self.time_stop_active else 0)
+                
+            for lava in self.lavas:
+                lava.update(frame, self.time_multiplier if not self.time_stop_active else 0)
+                if player_rect.colliderect(lava.get_rect()):
+                    self.load_level(self.current_level)
                     
         if self.time_stop_cooldown_timer > 0:
-            self.time_stop_cooldown_timer -= dt
+            self.time_stop_cooldown_timer -= frame / 1000.0
+            
+        all_collected = all(coin.collected for coin in self.coins)
+        if all_collected and len(self.coins) > 0:
+            self.current_level += 1
+            if not self.load_level(self.current_level):
+                self.current_level -= 1
             
     def draw(self):
-        self.screen.fill((135, 206, 235))
+        self.screen.fill(WHITE)
         
-        for platform in self.platforms:
-            pygame.draw.rect(self.screen, GREEN, platform)
-            pygame.draw.rect(self.screen, (20, 100, 20), platform, 2)
+        camera_x, camera_y = self.player.get_camera_offset()
+        time_stop_factor = self.get_time_stop_factor()
+        
+        for y, line in enumerate(self.level_map):
+            for x, char in enumerate(line):
+                if char == '#':
+                    draw_x = x * BLOCK_SIZE - camera_x
+                    draw_y = y * BLOCK_SIZE - camera_y
+                    color = self.create_time_stop_color(WALL_COLOR, time_stop_factor)
+                    pygame.draw.rect(self.screen, color, (draw_x, draw_y, BLOCK_SIZE, BLOCK_SIZE))
+                elif char == '+':
+                    draw_x = x * BLOCK_SIZE - camera_x
+                    draw_y = y * BLOCK_SIZE - camera_y
+                    color = self.create_time_stop_color(LAVA_COLOR, time_stop_factor)
+                    pygame.draw.rect(self.screen, color, (draw_x, draw_y, BLOCK_SIZE, BLOCK_SIZE))
+                    
+        for lava in self.lavas:
+            lava.draw(self.screen, camera_x, camera_y, time_stop_factor)
             
         for coin in self.coins:
-            coin.draw(self.screen, self.game_time)
+            coin.draw(self.screen, camera_x, camera_y)
             
         self.player.draw(self.screen)
         
-        score_text = self.font.render(f"Score: {self.score}", True, BLACK)
+        score_text = self.font.render(f"Score: {self.score}", True, (0, 0, 0))
         self.screen.blit(score_text, (10, 10))
         
-        time_text = self.font.render(f"Time: {self.game_time:.1f}s", True, BLACK)
+        time_text = self.font.render(f"Time: {self.game_time:.1f}s", True, (0, 0, 0))
         self.screen.blit(time_text, (10, 50))
         
-        speed_text = self.small_font.render(f"Speed: {self.time_multiplier:.1f}x", True, BLACK)
+        speed_text = self.small_font.render(f"Speed: {self.time_multiplier:.1f}x", True, (0, 0, 0))
         self.screen.blit(speed_text, (10, 90))
         
+        level_text = self.small_font.render(f"Level: {self.current_level + 1}", True, (0, 0, 0))
+        self.screen.blit(level_text, (10, 120))
+        
         if self.time_stop_active:
-            stop_text = self.font.render("TIME STOPPED!", True, RED)
+            stop_text = self.font.render("TIME STOPPED!", True, (220, 20, 60))
             text_rect = stop_text.get_rect(center=(WINDOW_WIDTH // 2, 30))
             self.screen.blit(stop_text, text_rect)
             
-            timer_text = self.small_font.render(f"{self.time_stop_timer:.1f}s", True, RED)
+            timer_text = self.small_font.render(f"{self.time_stop_timer:.1f}s", True, (220, 20, 60))
             timer_rect = timer_text.get_rect(center=(WINDOW_WIDTH // 2, 60))
             self.screen.blit(timer_text, timer_rect)
         elif self.time_stop_cooldown_timer > 0:
-            cooldown_text = self.small_font.render(f"Time Stop: {self.time_stop_cooldown_timer:.1f}s", True, GRAY)
+            cooldown_text = self.small_font.render(f"Time Stop: {self.time_stop_cooldown_timer:.1f}s", True, (128, 128, 128))
             self.screen.blit(cooldown_text, (WINDOW_WIDTH - 200, 10))
         else:
-            ready_text = self.small_font.render("Time Stop: Ready (Z)", True, GREEN)
+            ready_text = self.small_font.render("Time Stop: Ready (Z)", True, (0, 128, 0))
             self.screen.blit(ready_text, (WINDOW_WIDTH - 220, 10))
             
-        controls_text = self.small_font.render("WASD/Arrows: Move | Space: Jump | Z: Time Stop", True, BLACK)
-        self.screen.blit(controls_text, (WINDOW_WIDTH // 2 - 250, WINDOW_HEIGHT - 25))
+        controls_text = self.small_font.render("Arrow Keys: Move | Z: Time Stop", True, (0, 0, 0))
+        self.screen.blit(controls_text, (WINDOW_WIDTH // 2 - 180, WINDOW_HEIGHT - 25))
         
         pygame.display.flip()
         
+    def create_time_stop_color(self, color, time_stop_factor):
+        if 0 < time_stop_factor < 1:
+            r = int(((255 - color[0]) * (1 - time_stop_factor) + color[0] * time_stop_factor) / 2)
+            g = int(((255 - color[1]) * (1 - time_stop_factor) + color[1] * time_stop_factor) / 2)
+            b = int(((255 - color[2]) * (1 - time_stop_factor) + color[2] * time_stop_factor) / 2)
+            return (r, g, b)
+        return color
+        
     def run(self):
         while self.running:
-            dt = self.clock.tick(FPS) / 1000.0
+            frame = self.clock.tick(FPS)
             
             self.handle_events()
-            self.update(dt)
+            self.update(frame)
             self.draw()
             
         pygame.quit()
