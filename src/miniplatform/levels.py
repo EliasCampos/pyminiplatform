@@ -16,6 +16,8 @@ class Level:
 
     BAR_WIDTH = 100
 
+    COINS_TEXT_COLOR = (20, 20, 20)
+
     def __init__(self, level_map):
         self.player = None
         self.lavas = ()
@@ -39,6 +41,9 @@ class Level:
             (WINDOW_WIDTH * info_margin + bar_margin, WINDOW_HEIGHT * info_margin + bar_margin),
             bar_size,
         )
+
+        self.info_font = pygame.font.Font(None, 24)
+        self.coins_surface = self.info_font.render(self.coins_text, True, self.COINS_TEXT_COLOR)
 
     def reset(self):
         self.player = None
@@ -71,6 +76,7 @@ class Level:
         self.blocks = tuple(blocks)
 
         self.time_stop_bar.width = self.BAR_WIDTH
+        self.refresh_coins_text()
 
     @property
     def entities(self):
@@ -83,6 +89,14 @@ class Level:
     @property
     def free_coins(self):
         return filter(operator.attrgetter("is_free"), self.coins)
+
+    @property
+    def coins_number(self):
+        return len(self.coins)
+
+    @property
+    def collected_coins_number(self):
+        return self.coins_number - sum(map(bool, self.free_coins))
 
     @property
     def has_free_coins(self):
@@ -163,6 +177,17 @@ class Level:
         color = (0, 255, 0)
         pygame.draw.rect(screen, "gray", self.time_stop_back_bar)
         pygame.draw.rect(screen, color, self.time_stop_bar)
+
+        coins_text_margin = 10
+        coins_text_pos = (self.time_stop_back_bar.left, self.time_stop_back_bar.bottom + coins_text_margin)
+        screen.blit(self.coins_surface, coins_text_pos)
+
+    @property
+    def coins_text(self):
+        return f"Coins: {self.collected_coins_number} / {self.coins_number}"
+
+    def refresh_coins_text(self):
+        self.coins_surface = self.info_font.render(self.coins_text, True, self.COINS_TEXT_COLOR)
 
     @classmethod
     def get_default_set(cls):

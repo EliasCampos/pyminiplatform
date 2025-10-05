@@ -139,7 +139,7 @@ class Player(Entity):
                 elif isinstance(entity, Lava):
                     self.set_dead()
                 elif isinstance(entity, Coin):
-                    entity.set_taken()
+                    entity.set_taken(level)
 
     def _handle_wall_collision(self, block, is_vertical):
         if self.dx != 0 and not is_vertical:
@@ -237,8 +237,9 @@ class Coin(Entity):
                     elif self.wobble < 0:
                         self.rect.top = entity.rect.bottom
 
-    def set_taken(self):
+    def set_taken(self, level):
         self.is_free = False
+        level.refresh_coins_text()
         Sound.COIN.play()
 
 
