@@ -5,7 +5,7 @@ import operator
 import pygame
 
 from miniplatform import effects
-from miniplatform.configs import config, WINDOW_WIDTH, WINDOW_HEIGHT, STATIC_DIR
+from miniplatform.configs import config, WINDOW_WIDTH, WINDOW_HEIGHT, STATIC_DIR, adjust_color
 from miniplatform.entities import Block, Lava, Coin, Player
 
 
@@ -13,6 +13,8 @@ class Level:
     TIME_STOP = 5_000
     TIME_FREEZE = 1_000
     TIME_STOP_IDLE = TIME_STOP + TIME_FREEZE
+
+    BAR_WIDTH = 100
 
     def __init__(self, level_map):
         self.player = None
@@ -25,6 +27,22 @@ class Level:
         self._time_stop_freeze = TimeFactor()
         self._time_stop_idle = TimeFactor()
         self._time_factors = [self._time_stop_left, self._time_stop_freeze, self._time_stop_idle]
+
+        info_margin = 0.01
+        bar_margin = 5
+        bar_size = (self.BAR_WIDTH, 20)
+        self.time_stop_back_bar = pygame.Rect(
+            (WINDOW_WIDTH * info_margin, WINDOW_HEIGHT * info_margin),
+            tuple(size + bar_margin * 2 for size in bar_size),
+        )
+        self.time_stop_bar = pygame.Rect(
+            (WINDOW_WIDTH * info_margin + bar_margin, WINDOW_HEIGHT * info_margin + bar_margin),
+            bar_size,
+        )
+
+        self.info_font = pygame.font.Font(None, 24)
+        self.coins_surface = None
+        self.refresh_coins_text()
 
     def reset(self):
         self.player = None
@@ -56,6 +74,9 @@ class Level:
         self.coins = tuple(coins)
         self.blocks = tuple(blocks)
 
+        self.time_stop_bar.width = self.BAR_WIDTH
+        self.refresh_coins_text()
+
     @property
     def entities(self):
         return itertools.chain(
@@ -67,6 +88,14 @@ class Level:
     @property
     def free_coins(self):
         return filter(operator.attrgetter("is_free"), self.coins)
+
+    @property
+    def coins_number(self):
+        return len(self.coins)
+
+    @property
+    def collected_coins_number(self):
+        return self.coins_number - sum(map(bool, self.free_coins))
 
     @property
     def has_free_coins(self):
@@ -91,6 +120,7 @@ class Level:
         self.player.render(screen)
         for entity in self.entities:
             entity.render(screen)
+        self._draw_infographics(screen)
 
     @property
     def is_running(self):
@@ -136,7 +166,37 @@ class Level:
             if factor:
                 factor.decr(time)  # decreasing one by one, not all at once
                 break
+        if self._time_stop_left or self._time_stop_freeze:
+            charge = sum([factor.value for factor in (self._time_stop_left, self._time_stop_freeze)])
+            total_charge = sum((self.TIME_STOP, self.TIME_FREEZE))
+            self.time_stop_bar.width = int(self.BAR_WIDTH * (charge / total_charge))
+        elif self._time_stop_idle:
+            scale = (self.TIME_STOP_IDLE - self._time_stop_idle.value) / self.TIME_STOP_IDLE
+            self.time_stop_bar.width = int(self.BAR_WIDTH * scale)
         config.color_factor = self.speed_factor
+
+    def _draw_infographics(self, screen):
+        pygame.draw.rect(screen, "gray", self.time_stop_back_bar)
+        if self._time_stop_left or self._time_stop_freeze:
+            color = adjust_color((0, 255, 0))
+        elif self._time_stop_idle:
+            color = (0, 125, 0)
+        else:
+            color = (0, 255, 0)
+        pygame.draw.rect(screen, color, self.time_stop_bar)
+
+        coins_text_margin = 10
+        coins_text_pos = (self.time_stop_back_bar.left, self.time_stop_back_bar.bottom + coins_text_margin)
+        screen.blit(self.coins_surface, coins_text_pos)
+
+    @property
+    def coins_text(self):
+        return f"Coins: {self.collected_coins_number} / {self.coins_number}"
+
+    def refresh_coins_text(self):
+        self.coins_surface = self.info_font.render(
+            self.coins_text, True, "black", "white"
+        )
 
     @classmethod
     def get_default_set(cls):
