@@ -1,9 +1,12 @@
+import pathlib
 import threading
 
 
 FPS = 60
 WINDOW_WIDTH = 800
 WINDOW_HEIGHT = 600
+
+STATIC_DIR = pathlib.Path(__file__).parent / "static"
 
 config = threading.local()
 config.offset_x = 0
