@@ -1,10 +1,8 @@
 import enum
-import pathlib
 
 import pygame
 
-
-MEDIA_DIR = pathlib.Path(__file__).parent / "media"
+from miniplatform.configs import STATIC_DIR
 
 
 class Sound(enum.Enum):
@@ -16,7 +14,7 @@ class Sound(enum.Enum):
 
     def __init__(self, channel_id, filename):
         self._channel_id = channel_id
-        self._sound_path = MEDIA_DIR / "sounds" / filename
+        self._sound_path = STATIC_DIR / "sounds" / filename
         self._sound = None
 
     def play(self):
@@ -29,6 +27,6 @@ class Sound(enum.Enum):
 
 
 def play_soundtrack():
-    soundtrack_path = MEDIA_DIR / "music" / "soundtrack.ogg"
+    soundtrack_path = STATIC_DIR / "music" / "soundtrack.ogg"
     pygame.mixer.music.load(str(soundtrack_path))
     pygame.mixer.music.play(-1)
