@@ -16,8 +16,6 @@ class Level:
 
     BAR_WIDTH = 100
 
-    COINS_TEXT_COLOR = (20, 20, 20)
-
     def __init__(self, level_map):
         self.player = None
         self.lavas = ()
@@ -43,7 +41,8 @@ class Level:
         )
 
         self.info_font = pygame.font.Font(None, 24)
-        self.coins_surface = self.info_font.render(self.coins_text, True, self.COINS_TEXT_COLOR)
+        self.coins_surface = None
+        self.refresh_coins_text()
 
     def reset(self):
         self.player = None
@@ -195,7 +194,9 @@ class Level:
         return f"Coins: {self.collected_coins_number} / {self.coins_number}"
 
     def refresh_coins_text(self):
-        self.coins_surface = self.info_font.render(self.coins_text, True, self.COINS_TEXT_COLOR)
+        self.coins_surface = self.info_font.render(
+            self.coins_text, True, "black", "white"
+        )
 
     @classmethod
     def get_default_set(cls):
