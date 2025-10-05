@@ -3,9 +3,9 @@ import operator
 
 import pygame
 
-import effects
-from configs import config, WINDOW_WIDTH, WINDOW_HEIGHT
-from entities import Block, Lava, Coin, Player
+from miniplatform import effects
+from miniplatform.configs import config, WINDOW_WIDTH, WINDOW_HEIGHT
+from miniplatform.entities import Block, Lava, Coin, Player
 
 
 class Level:

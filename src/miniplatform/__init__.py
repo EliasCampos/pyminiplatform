@@ -1,7 +1,7 @@
 import pygame
 
-import configs
-from game import Game
+from miniplatform import configs
+from miniplatform.game import Game
 
 
 def main():
@@ -27,7 +27,3 @@ def main():
         game.render(screen)
 
         pygame.display.flip()
-
-
-if __name__ == "__main__":
-    main()

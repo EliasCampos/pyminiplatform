@@ -2,9 +2,9 @@ import os
 
 import pygame
 
-import configs
-import effects
-from levels import Level
+from miniplatform import configs
+from miniplatform import effects
+from miniplatform.levels import Level
 
 
 class Game:

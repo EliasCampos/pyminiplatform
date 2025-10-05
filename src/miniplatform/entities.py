@@ -5,8 +5,8 @@ import random
 
 import pygame
 
-from configs import config, adjust_color
-from effects import Sound
+from miniplatform.configs import config, adjust_color
+from miniplatform.effects import Sound
 
 
 class Entity(abc.ABC):

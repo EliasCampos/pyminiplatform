@@ -4,6 +4,8 @@ import pathlib
 import pygame
 
 
+MEDIA_DIR = pathlib.Path(__file__).parent / "media"
+
 
 class Sound(enum.Enum):
     VICTORY = 1, "victory.wav"
@@ -14,7 +16,7 @@ class Sound(enum.Enum):
 
     def __init__(self, channel_id, filename):
         self._channel_id = channel_id
-        self._sound_path = pathlib.Path(__file__).parent / "sounds" / filename
+        self._sound_path = MEDIA_DIR / "sounds" / filename
         self._sound = None
 
     def play(self):
@@ -27,6 +29,6 @@ class Sound(enum.Enum):
 
 
 def play_soundtrack():
-    soundtrack_path = pathlib.Path(__file__).parent / "music" / "soundtrack.ogg"
+    soundtrack_path = MEDIA_DIR / "music" / "soundtrack.ogg"
     pygame.mixer.music.load(str(soundtrack_path))
     pygame.mixer.music.play(-1)
