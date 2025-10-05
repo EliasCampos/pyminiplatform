@@ -3,7 +3,7 @@ import operator
 import pygame
 
 from configs import config, WINDOW_WIDTH, WINDOW_HEIGHT
-from entities import Vector, Block, Lava, Coin, Player
+from entities import Block, Lava, Coin, Player
 
 
 class Level:
@@ -24,9 +24,9 @@ class Level:
 
         for i, line in enumerate(self.level_map):
             for j, el in enumerate(line):
-                location = Vector(j * Block.SIZE, i * Block.SIZE)
+                location = pygame.Vector2(j * Block.SIZE, i * Block.SIZE)
                 if el in ("+", "v", "|", "="):
-                    direction = Vector(el == "=", el in ("v", "|"))
+                    direction = pygame.Vector2(el == "=", el in ("v", "|"))
                     lava = Lava(location, direction, is_repeatable=el == "v")
                     self.lavas.append(lava)
                 elif el == "o":

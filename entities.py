@@ -6,7 +6,6 @@ import random
 
 import pygame
 
-from common import Vector
 from configs import config
 from effects import Sound
 
@@ -160,7 +159,7 @@ class Lava(Entity):
 
     def __init__(self, location, direction, is_repeatable):
         self.speed = 0.1
-        self.location = location + Vector(*([Block.SIZE * (1 - self.SCALE) * 0.5] * 2))
+        self.location = location + pygame.Vector2(*([Block.SIZE * (1 - self.SCALE) * 0.5] * 2))
         self.direction = direction
         self.is_repeatable = is_repeatable
         self.size = Block.SIZE * self.SCALE
