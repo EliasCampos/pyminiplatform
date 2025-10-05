@@ -14,6 +14,8 @@ class Level:
     TIME_FREEZE = 1_000
     TIME_STOP_IDLE = TIME_STOP + TIME_FREEZE
 
+    BAR_WIDTH = 100
+
     def __init__(self, level_map):
         self.player = None
         self.lavas = ()
@@ -25,6 +27,18 @@ class Level:
         self._time_stop_freeze = TimeFactor()
         self._time_stop_idle = TimeFactor()
         self._time_factors = [self._time_stop_left, self._time_stop_freeze, self._time_stop_idle]
+
+        info_margin = 0.01
+        bar_margin = 5
+        bar_size = (self.BAR_WIDTH, 20)
+        self.time_stop_back_bar = pygame.Rect(
+            (WINDOW_WIDTH * info_margin, WINDOW_HEIGHT * info_margin),
+            tuple(size + bar_margin * 2 for size in bar_size),
+        )
+        self.time_stop_bar = pygame.Rect(
+            (WINDOW_WIDTH * info_margin + bar_margin, WINDOW_HEIGHT * info_margin + bar_margin),
+            bar_size,
+        )
 
     def reset(self):
         self.player = None
@@ -55,6 +69,8 @@ class Level:
         self.lavas = tuple(lavas)
         self.coins = tuple(coins)
         self.blocks = tuple(blocks)
+
+        self.time_stop_bar.width = self.BAR_WIDTH
 
     @property
     def entities(self):
@@ -91,6 +107,7 @@ class Level:
         self.player.render(screen)
         for entity in self.entities:
             entity.render(screen)
+        self._draw_infographics(screen)
 
     @property
     def is_running(self):
@@ -118,6 +135,7 @@ class Level:
                 (self._time_stop_idle, self.TIME_STOP_IDLE),
             ):
                 factor.set(value)
+            self.time_stop_bar.width = 0
             effects.Sound.TIME_STOP.play()
 
     def _handle_keypress(self, time):
@@ -136,7 +154,15 @@ class Level:
             if factor:
                 factor.decr(time)  # decreasing one by one, not all at once
                 break
+        if any(self._time_factors):
+            scale = (self.TIME_STOP_IDLE - self._time_stop_idle.value) / self.TIME_STOP_IDLE
+            self.time_stop_bar.width = int(self.BAR_WIDTH * scale)
         config.color_factor = self.speed_factor
+
+    def _draw_infographics(self, screen):
+        color = (0, 255, 0)
+        pygame.draw.rect(screen, "gray", self.time_stop_back_bar)
+        pygame.draw.rect(screen, color, self.time_stop_bar)
 
     @classmethod
     def get_default_set(cls):
