@@ -1,3 +1,4 @@
+import itertools
 import operator
 
 import pygame
@@ -10,17 +11,17 @@ class Level:
 
     def __init__(self, level_map):
         self.player = None
-        self.lavas = []
-        self.coins = []
-        self.blocks = []
+        self.lavas = ()
+        self.coins = ()
+        self.blocks = ()
         self.level_map = level_map
         self.speed_factor = 1
 
     def reset(self):
         self.player = None
-        self.lavas = []
-        self.coins = []
-        self.blocks = []
+        lavas = []
+        coins = []
+        blocks = []
 
         for i, line in enumerate(self.level_map):
             for j, el in enumerate(line):
@@ -28,23 +29,35 @@ class Level:
                 if el in ("+", "v", "|", "="):
                     direction = pygame.Vector2(el == "=", el in ("v", "|"))
                     lava = Lava(location, direction, is_repeatable=el == "v")
-                    self.lavas.append(lava)
+                    lavas.append(lava)
                 elif el == "o":
                     coin = Coin(location)
-                    self.coins.append(coin)
+                    coins.append(coin)
                 elif el == "@":
                     self.player = Player(location)
                 elif el == "#":
                     block = Block(location)
-                    self.blocks.append(block)
+                    blocks.append(block)
+
+        self.lavas = tuple(lavas)
+        self.coins = tuple(coins)
+        self.blocks = tuple(blocks)
 
     @property
     def entities(self):
-        return sum((
+        return itertools.chain(
             self.blocks,
-            self.coins,
+            self.free_coins,
             self.lavas,
-        ), [])
+        )
+
+    @property
+    def free_coins(self):
+        return filter(operator.attrgetter("is_free"), self.coins)
+
+    @property
+    def has_free_coins(self):
+        return any(self.free_coins)
 
     def update(self, time):
         self._handle_keypress(time)
@@ -56,8 +69,7 @@ class Level:
         for entity in self.entities:
             entity.update(time, level=self)
 
-        self.coins = list(filter(operator.attrgetter("is_free"), self.coins))
-        if not self.coins:
+        if not self.has_free_coins:
             self.player.set_won()
 
     def redraw(self, screen):
