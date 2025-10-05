@@ -6,10 +6,11 @@ import pygame
 
 
 class Sound(enum.Enum):
+    VICTORY = 1, "victory.wav"
+    FAIL = 1, "fail.wav"
     JUMP = 2, "jump.wav"
     COIN = 3, "coin.wav"
-    FAIL = 1, "fail.wav"
-    VICTORY = 1, "victory.wav"
+    TIME_STOP = 4, "time_stop.wav"
 
     def __init__(self, channel_id, filename):
         self._channel_id = channel_id

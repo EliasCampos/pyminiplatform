@@ -1,12 +1,11 @@
 import abc
-import copy
 import functools
 import math
 import random
 
 import pygame
 
-from configs import config
+from configs import config, adjust_color
 from effects import Sound
 
 
@@ -98,7 +97,7 @@ class Player(Entity):
             color = (255, 255, 0)
         else:
             color = (50, 200, 100)
-        pygame.draw.rect(screen, color, self.sprite)
+        pygame.draw.rect(screen, adjust_color(color), self.sprite)
 
     def move_left(self, time):
         self.dx = -self.PLAYER_STEP * time
@@ -181,7 +180,7 @@ class Lava(Entity):
 
     def render(self, screen):
         color = (255, 100, 100)
-        pygame.draw.rect(screen, color, self.sprite)
+        pygame.draw.rect(screen, adjust_color(color), self.sprite)
 
     def _handle_collision(self, level):
         for entity in level.entities:
@@ -195,21 +194,20 @@ class Lava(Entity):
 
 
 class Coin(Entity):
-    WOBBLE_SPEED = 0.005
+    FREQ = 0.01
 
     def __init__(self, location):
         super().__init__(location)
-        self.timeline = math.pi * random.uniform(-1, 1) / self.WOBBLE_SPEED
+        self.timeline = math.pi * random.uniform(-1, 1) / self.FREQ
         self.wobble = 0
         self.is_hit = False
         self.is_free = True
 
     def update_state(self, time, level):
         self.timeline += time
-        amplitude = 5
-        frequency = self.WOBBLE_SPEED * level.speed_factor
-        self.wobble = amplitude * math.sin(frequency * self.timeline)
-        self.rect.top = self.location.y + self.wobble
+        max_speed = 1.5
+        self.wobble = max_speed * level.speed_factor * math.sin(self.FREQ * self.timeline)
+        self.rect.move_ip(0, self.wobble)
         self._handle_collision(level)
 
     def get_rect(self):
@@ -225,7 +223,7 @@ class Coin(Entity):
         radius = Block.SIZE // 3
         pygame.draw.circle(
             screen,
-            color,
+            adjust_color(color),
             self.sprite.center,
             radius,
         )

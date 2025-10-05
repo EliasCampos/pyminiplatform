@@ -3,11 +3,15 @@ import operator
 
 import pygame
 
+import effects
 from configs import config, WINDOW_WIDTH, WINDOW_HEIGHT
 from entities import Block, Lava, Coin, Player
 
 
 class Level:
+    TIME_STOP = 5_000
+    TIME_FREEZE = 1_000
+    TIME_STOP_IDLE = TIME_STOP + TIME_FREEZE
 
     def __init__(self, level_map):
         self.player = None
@@ -15,10 +19,18 @@ class Level:
         self.coins = ()
         self.blocks = ()
         self.level_map = level_map
-        self.speed_factor = 1
+
+        self._time_stop_left = TimeFactor()
+        self._time_stop_freeze = TimeFactor()
+        self._time_stop_idle = TimeFactor()
+        self._time_factors = [self._time_stop_left, self._time_stop_freeze, self._time_stop_idle]
 
     def reset(self):
         self.player = None
+
+        for factor in self._time_factors:
+            factor.set(0)
+
         lavas = []
         coins = []
         blocks = []
@@ -71,6 +83,8 @@ class Level:
 
         if not self.has_free_coins:
             self.player.set_won()
+        else:
+            self._handle_time_stop(time)
 
     def redraw(self, screen):
         self.player.render(screen)
@@ -85,6 +99,26 @@ class Level:
     def is_complete(self):
         return self.player.is_winner
 
+    @property
+    def speed_factor(self):
+        if self._time_stop_left:
+            return 0
+
+        if self._time_stop_freeze:
+            return (self.TIME_FREEZE - self._time_stop_freeze.value) / self.TIME_FREEZE
+
+        return 1
+
+    def set_time_stop(self):
+        if not (self._time_stop_left or self._time_stop_idle):
+            for factor, value in (
+                (self._time_stop_left, self.TIME_STOP),
+                (self._time_stop_freeze, self.TIME_FREEZE),
+                (self._time_stop_idle, self.TIME_STOP_IDLE),
+            ):
+                factor.set(value)
+            effects.Sound.TIME_STOP.play()
+
     def _handle_keypress(self, time):
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LEFT]:
@@ -93,6 +127,15 @@ class Level:
             self.player.move_right(time)
         if keys[pygame.K_UP]:
             self.player.jump(time)
+        if keys[pygame.K_z]:
+            self.set_time_stop()
+
+    def _handle_time_stop(self, time):
+        for factor in self._time_factors:
+            if factor:
+                factor.decr(time)  # decreasing one by one, not all at once
+                break
+        config.color_factor = self.speed_factor
 
     @classmethod
     def get_default_set(cls):
@@ -277,3 +320,18 @@ class Level:
         ]
 
         return [cls(level_map) for level_map in level_maps]
+
+
+class TimeFactor:
+
+    def __init__(self, value=0):
+        self.value = value
+
+    def decr(self, value):
+        self.value -= value
+
+    def set(self, value):
+        self.value = value
+
+    def __bool__(self):
+        return self.value > 0
