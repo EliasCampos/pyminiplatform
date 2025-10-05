@@ -12,8 +12,15 @@ from effects import Sound
 
 class Entity(abc.ABC):
 
-    @abc.abstractmethod
+    def __init__(self, location):
+        self.location = location
+
     def update(self, time, level):
+        self.update_state(time, level)
+        self.alight_sprite()
+
+    @abc.abstractmethod
+    def update_state(self, time, level):
         ...
 
     @abc.abstractmethod
@@ -35,7 +42,7 @@ class Entity(abc.ABC):
     def collides(self, entity):
         return self.rect.colliderect(entity.rect)
 
-    def set_offset(self):
+    def alight_sprite(self):
         self.sprite.center = self.rect.center
 
         self.sprite.left -= config.offset_x
@@ -45,23 +52,22 @@ class Entity(abc.ABC):
 class Player(Entity):
     WIDTH = 16
     HEIGHT = 30
+    PLAYER_STEP = 0.01
 
     def __init__(self, location):
-        self.location = location
+        super().__init__(location)
         self.dx = 0
         self.dy = 0
         self.is_on_ground = False
 
-        self._gravity = 0.0005
-        self._player_step = 0.01
         self._is_won = False
         self._is_dead = False
-
         self._finalization_time = 3000
 
-    def update(self, time, level):
+    def update_state(self, time, level):
         if not self.is_on_ground:
-            self.dy += self._gravity * time
+            gravity = 0.0005
+            self.dy += gravity * time
         self.is_on_ground = False
         self.rect.move_ip(
             0,
@@ -76,8 +82,6 @@ class Player(Entity):
         if self._is_dead or self._is_won:
             self._finalization_time -= time
         self.dx = 0
-
-        self.set_offset()
 
     def get_rect(self):
         return pygame.Rect(
@@ -97,14 +101,14 @@ class Player(Entity):
         pygame.draw.rect(screen, color, self.sprite)
 
     def move_left(self, time):
-        self.dx = -self._player_step * time
+        self.dx = -self.PLAYER_STEP * time
 
     def move_right(self, time):
-        self.dx = self._player_step * time
+        self.dx = self.PLAYER_STEP * time
 
     def jump(self, time):
         if self.is_on_ground:
-            self.dy -= self._player_step * 2 * time
+            self.dy -= self.PLAYER_STEP * 2 * time
             Sound.JUMP.play()
 
     def set_position(self, position):
@@ -158,39 +162,26 @@ class Lava(Entity):
     SCALE = 0.9
 
     def __init__(self, location, direction, is_repeatable):
-        self.speed = 0.1
-        self.location = location + pygame.Vector2(*([Block.SIZE * (1 - self.SCALE) * 0.5] * 2))
+        margin = Block.SIZE * (1 - self.SCALE) * 0.5
+        super().__init__(
+            location=location + pygame.Vector2(margin, margin)
+        )
         self.direction = direction
         self.is_repeatable = is_repeatable
-        self.size = Block.SIZE * self.SCALE
-        self.color = (255, 100, 100)
-        self.is_on_ground = False
 
-        self._gravity = 0.0005
-        self._player_step = 0.1
-        self._is_won = False
-        self._is_dead = False
-
-    def update(self, time, level):
-        step = self.speed * level.speed_factor * time
-        self.rect.move_ip(
-            self.direction.x * step,
-            self.direction.y * step,
-        )
+    def update_state(self, time, level):
+        speed = 0.1
+        step = speed * level.speed_factor * time
+        self.rect.move_ip(self.direction.x * step, self.direction.y * step)
         self._handle_collision(level)
 
-        self.set_offset()
-
     def get_rect(self):
-        return pygame.Rect(
-            self.location.x,
-            self.location.y,
-            self.size,
-            self.size,
-        )
+        size = Block.SIZE * self.SCALE
+        return pygame.Rect(self.location.x, self.location.y, size, size)
 
     def render(self, screen):
-        pygame.draw.rect(screen, self.color, self.sprite)
+        color = (255, 100, 100)
+        pygame.draw.rect(screen, color, self.sprite)
 
     def _handle_collision(self, level):
         for entity in level.entities:
@@ -200,28 +191,26 @@ class Lava(Entity):
                         self.rect.left = self.location.x
                         self.rect.top = self.location.y
                     else:
-                        self.speed *= -1
+                        self.direction.rotate_ip(180)
 
 
 class Coin(Entity):
+    WOBBLE_SPEED = 0.005
 
     def __init__(self, location):
-        self._wobble_distance = 5
-        self._wobble_speed = 0.005
-        self._t = math.pi * random.uniform(-1, 1) / self._wobble_speed
-
-        self.location = location
+        super().__init__(location)
+        self.timeline = math.pi * random.uniform(-1, 1) / self.WOBBLE_SPEED
         self.wobble = 0
         self.is_hit = False
         self.is_free = True
 
-    def update(self, time, level):
-        self._t += time
-        current_wobble_speed = self._wobble_speed * level.speed_factor
-        self.wobble = self._wobble_distance * math.sin(current_wobble_speed * self._t)
+    def update_state(self, time, level):
+        self.timeline += time
+        amplitude = 5
+        frequency = self.WOBBLE_SPEED * level.speed_factor
+        self.wobble = amplitude * math.sin(frequency * self.timeline)
         self.rect.top = self.location.y + self.wobble
         self._handle_collision(level)
-        self.set_offset()
 
     def get_rect(self):
         return pygame.Rect(
@@ -258,21 +247,12 @@ class Coin(Entity):
 class Block(Entity):
     SIZE = 20
 
-    def __init__(self, location):
-        self.start_location = location
-        self.location = copy.copy(location)
-        self.color = (60, 60, 60)
-
     def get_rect(self):
-        return pygame.Rect(
-            self.location.x,
-            self.location.y,
-            self.SIZE,
-            self.SIZE,
-        )
+        return pygame.Rect(self.location.x, self.location.y, self.SIZE, self.SIZE)
 
-    def update(self, time, level):
-        self.set_offset()
+    def update_state(self, time, level):
+        pass
 
     def render(self, screen):
-        pygame.draw.rect(screen, self.color, self.sprite)
+        color = (60, 60, 60)
+        pygame.draw.rect(screen, color, self.sprite)
