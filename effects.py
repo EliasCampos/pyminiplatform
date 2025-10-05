@@ -23,3 +23,9 @@ class Sound(enum.Enum):
         sound_channel = pygame.mixer.Channel(self._channel_id)
         if not sound_channel.get_busy():
             sound_channel.play(self._sound)
+
+
+def play_soundtrack():
+    soundtrack_path = pathlib.Path(__file__).parent / "music" / "soundtrack.ogg"
+    pygame.mixer.music.load(str(soundtrack_path))
+    pygame.mixer.music.play(-1)

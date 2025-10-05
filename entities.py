@@ -1,5 +1,6 @@
 import abc
 import copy
+import functools
 import math
 import random
 
@@ -21,15 +22,25 @@ class Entity(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def get_rect(self, offset):
+    def get_rect(self):
         ...
 
-    @property
+    @functools.cached_property
     def rect(self):
-        return self.get_rect(offset=Vector(0, 0))
+        return self.get_rect()
+
+    @functools.cached_property
+    def sprite(self):
+        return self.get_rect()
 
     def collides(self, entity):
         return self.rect.colliderect(entity.rect)
+
+    def set_offset(self):
+        self.sprite.center = self.rect.center
+
+        self.sprite.left -= config.offset_x
+        self.sprite.top -= config.offset_y
 
 
 class Player(Entity):
@@ -38,8 +49,8 @@ class Player(Entity):
 
     def __init__(self, location):
         self.location = location
-        self.speed = Vector(0, 0)
-        self.color = (50, 200, 100)
+        self.dx = 0
+        self.dy = 0
         self.is_on_ground = False
 
         self._gravity = 0.0005
@@ -51,20 +62,28 @@ class Player(Entity):
 
     def update(self, time, level):
         if not self.is_on_ground:
-            self.speed.y += self._gravity * time
-        self.location.y += self.speed.y * time
+            self.dy += self._gravity * time
         self.is_on_ground = False
+        self.rect.move_ip(
+            0,
+            self.dy * time,
+        )
         self._handle_collision(level, is_vertical=True)
-        self.location.x += self.speed.x * time
+        self.rect.move_ip(
+            self.dx * time,
+            0,
+        )
         self._handle_collision(level, is_vertical=False)
         if self._is_dead or self._is_won:
             self._finalization_time -= time
-        self.speed.x = 0
+        self.dx = 0
 
-    def get_rect(self, offset):
+        self.set_offset()
+
+    def get_rect(self):
         return pygame.Rect(
-            self.location.x - offset.x,
-            self.location.y - offset.y,
+            self.location.x,
+            self.location.y,
             self.WIDTH,
             self.HEIGHT,
         )
@@ -75,18 +94,18 @@ class Player(Entity):
         elif self._is_won:
             color = (255, 255, 0)
         else:
-            color = self.color
-        pygame.draw.rect(screen, color, self.get_rect(offset=config.camera_offset))
+            color = (50, 200, 100)
+        pygame.draw.rect(screen, color, self.sprite)
 
     def move_left(self, time):
-        self.speed.x = -self._player_step * time
+        self.dx = -self._player_step * time
 
     def move_right(self, time):
-        self.speed.x = self._player_step * time
+        self.dx = self._player_step * time
 
     def jump(self, time):
         if self.is_on_ground:
-            self.speed.y -= self._player_step * 1.8 * time
+            self.dy -= self._player_step * 2 * time
             Sound.JUMP.play()
 
     def set_position(self, position):
@@ -121,32 +140,30 @@ class Player(Entity):
                     entity.set_taken()
 
     def _handle_wall_collision(self, block, is_vertical):
-        if self.speed.x != 0 and not is_vertical:
-            if self.speed.x > 0:
-                self.location.x = block.rect.left - self.WIDTH
-            elif self.speed.x < 0:
-                self.location.x = block.rect.right
-            self.speed.x = 0
-        if self.speed.y != 0 and is_vertical:
-            if self.speed.y > 0:
-                self.location.y = block.rect.y - self.HEIGHT
+        if self.dx != 0 and not is_vertical:
+            if self.dx > 0:
+                self.rect.right = block.rect.left
+            elif self.dx < 0:
+                self.rect.left = block.rect.right
+            self.dx = 0
+        if self.dy != 0 and is_vertical:
+            if self.dy > 0:
+                self.rect.bottom = block.rect.top
                 self.is_on_ground = True
-            if self.speed.y < 0:
-                self.location.y = block.rect.bottom
-            self.speed.y = 0
+            if self.dy < 0:
+                self.rect.top = block.rect.bottom
+            self.dy = 0
 
 
 class Lava(Entity):
-    SPEED = 0.05
-    SCALE = 0.95
+    SCALE = 0.9
 
     def __init__(self, location, direction, is_repeatable):
-        self.start_location = location + Vector(*([Block.SIZE * (1 - self.SCALE)] * 2))
-        self.speed = direction * self.SPEED
-        self.location = copy.copy(self.start_location)
+        self.speed = 0.1
+        self.location = location + Vector(*([Block.SIZE * (1 - self.SCALE) * 0.5] * 2))
         self.direction = direction
         self.is_repeatable = is_repeatable
-        self.sizes = Vector(*([Block.SIZE * self.SCALE] * 2))
+        self.size = Block.SIZE * self.SCALE
         self.color = (255, 100, 100)
         self.is_on_ground = False
 
@@ -156,27 +173,33 @@ class Lava(Entity):
         self._is_dead = False
 
     def update(self, time, level):
-        speed = self.speed * level.speed_factor
-        self.location += speed * time
+        step = self.speed * level.speed_factor * time
+        self.rect.move_ip(
+            self.direction.x * step,
+            self.direction.y * step,
+        )
         self._handle_collision(level)
 
-    def get_rect(self, offset):
+        self.set_offset()
+
+    def get_rect(self):
         return pygame.Rect(
-            self.location.x - offset.x,
-            self.location.y - offset.y,
-            self.sizes.x,
-            self.sizes.y,
+            self.location.x,
+            self.location.y,
+            self.size,
+            self.size,
         )
 
     def render(self, screen):
-        pygame.draw.rect(screen, self.color, self.get_rect(offset=config.camera_offset))
+        pygame.draw.rect(screen, self.color, self.sprite)
 
     def _handle_collision(self, level):
         for entity in level.entities:
             if self.collides(entity):
                 if isinstance(entity, Block):
                     if self.is_repeatable:
-                        self.location = copy.copy(self.start_location)
+                        self.rect.left = self.location.x
+                        self.rect.top = self.location.y
                     else:
                         self.speed *= -1
 
@@ -184,50 +207,49 @@ class Lava(Entity):
 class Coin(Entity):
 
     def __init__(self, location):
-        self.start_location = location
-        self.location = copy.copy(location)
-        self.wobble = 2 * math.pi * random.uniform(-1, 1)
-        self.wobble_pos = Vector(0, 0)
+        self._wobble_distance = 5
+        self._wobble_speed = 0.005
+        self._t = math.pi * random.uniform(-1, 1) / self._wobble_speed
+
+        self.location = location
+        self.wobble = 0
         self.is_hit = False
         self.is_free = True
-        self.color = (255, 215, 0)
-        self.radius = Block.SIZE // 3
-
-        self._wobble_speed = 0.005
-        self._wobble_distance = 5
 
     def update(self, time, level):
+        self._t += time
         current_wobble_speed = self._wobble_speed * level.speed_factor
-        self.wobble += current_wobble_speed * time
+        self.wobble = self._wobble_distance * math.sin(current_wobble_speed * self._t)
+        self.rect.top = self.location.y + self.wobble
         self._handle_collision(level)
-        if not self.is_hit:
-            self.location = self.start_location + Vector(
-                0,
-                self._wobble_distance * math.sin(self.wobble)
-            )
-        self.is_hit = False
+        self.set_offset()
 
-    def get_rect(self, offset):
+    def get_rect(self):
         return pygame.Rect(
-            self.location.x - offset.x,
-            self.location.y - offset.y,
+            self.location.x,
+            self.location.y,
             Block.SIZE,
             Block.SIZE,
         )
 
     def render(self, screen):
+        color = (255, 215, 0)
+        radius = Block.SIZE // 3
         pygame.draw.circle(
             screen,
-            self.color,
-            (self.location.x - config.camera_offset.x, self.location.y - config.camera_offset.y),
-            self.radius,
+            color,
+            self.sprite.center,
+            radius,
         )
 
     def _handle_collision(self, level):
         for entity in level.entities:
             if self.collides(entity):
                 if isinstance(entity, (Block, Lava)):
-                    self.is_hit = True
+                    if self.wobble > 0:
+                        self.rect.bottom = entity.rect.top
+                    elif self.wobble < 0:
+                        self.rect.top = entity.rect.bottom
 
     def set_taken(self):
         self.is_free = False
@@ -242,16 +264,16 @@ class Block(Entity):
         self.location = copy.copy(location)
         self.color = (60, 60, 60)
 
-    def get_rect(self, offset):
+    def get_rect(self):
         return pygame.Rect(
-            self.location.x - offset.x,
-            self.location.y - offset.y,
+            self.location.x,
+            self.location.y,
             self.SIZE,
             self.SIZE,
         )
 
     def update(self, time, level):
-        pass
+        self.set_offset()
 
     def render(self, screen):
-        pygame.draw.rect(screen, self.color, self.get_rect(offset=config.camera_offset))
+        pygame.draw.rect(screen, self.color, self.sprite)
