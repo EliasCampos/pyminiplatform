@@ -5,7 +5,7 @@ import operator
 import pygame
 
 from miniplatform import effects
-from miniplatform.configs import config, WINDOW_WIDTH, WINDOW_HEIGHT, STATIC_DIR
+from miniplatform.configs import config, WINDOW_WIDTH, WINDOW_HEIGHT, STATIC_DIR, adjust_color
 from miniplatform.entities import Block, Lava, Coin, Player
 
 
@@ -149,7 +149,6 @@ class Level:
                 (self._time_stop_idle, self.TIME_STOP_IDLE),
             ):
                 factor.set(value)
-            self.time_stop_bar.width = 0
             effects.Sound.TIME_STOP.play()
 
     def _handle_keypress(self, time):
@@ -168,17 +167,23 @@ class Level:
             if factor:
                 factor.decr(time)  # decreasing one by one, not all at once
                 break
-        if any(self._time_factors):
+        if self._time_stop_left or self._time_stop_freeze:
+            charge = sum([factor.value for factor in (self._time_stop_left, self._time_stop_freeze)])
+            total_charge = sum((self.TIME_STOP, self.TIME_FREEZE))
+            self.time_stop_bar.width = int(self.BAR_WIDTH * (charge / total_charge))
+        elif self._time_stop_idle:
             scale = (self.TIME_STOP_IDLE - self._time_stop_idle.value) / self.TIME_STOP_IDLE
             self.time_stop_bar.width = int(self.BAR_WIDTH * scale)
         config.color_factor = self.speed_factor
 
     def _draw_infographics(self, screen):
         pygame.draw.rect(screen, "gray", self.time_stop_back_bar)
-        if self._time_stop_idle:
+        if self._time_stop_left or self._time_stop_freeze:
+            color = adjust_color((0, 255, 0))
+        elif self._time_stop_idle:
             color = (0, 125, 0)
         else:
-            color = (0, 222, 0)
+            color = (0, 255, 0)
         pygame.draw.rect(screen, color, self.time_stop_bar)
 
         coins_text_margin = 10
