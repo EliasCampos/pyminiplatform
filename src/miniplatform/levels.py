@@ -174,8 +174,11 @@ class Level:
         config.color_factor = self.speed_factor
 
     def _draw_infographics(self, screen):
-        color = (0, 255, 0)
         pygame.draw.rect(screen, "gray", self.time_stop_back_bar)
+        if self._time_stop_idle:
+            color = (0, 125, 0)
+        else:
+            color = (0, 222, 0)
         pygame.draw.rect(screen, color, self.time_stop_bar)
 
         coins_text_margin = 10
