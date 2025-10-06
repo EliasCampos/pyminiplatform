@@ -126,10 +126,12 @@ class Player(Entity):
     def is_winner(self):
         return not self._is_dead and self._is_won and self._finalization_time <= 0
 
-    def set_won(self):
+    def set_won(self, level):
         if not (self._is_won or self._is_dead):
             self._is_won = True
             Sound.VICTORY.play()
+        if level.is_final:
+            pygame.mixer.music.fadeout(self._finalization_time)
 
     def _handle_collision(self, level, is_vertical):
         for entity in level.entities:

@@ -16,12 +16,13 @@ class Level:
 
     BAR_WIDTH = 100
 
-    def __init__(self, level_map):
+    def __init__(self, level_map, is_final=False):
         self.player = None
         self.lavas = ()
         self.coins = ()
         self.blocks = ()
         self.level_map = level_map
+        self.is_final = is_final
 
         self._time_stop_left = TimeFactor()
         self._time_stop_freeze = TimeFactor()
@@ -112,7 +113,7 @@ class Level:
             entity.update(time, level=self)
 
         if not self.has_free_coins:
-            self.player.set_won()
+            self.player.set_won(level=self)
         else:
             self._handle_time_stop(time)
 
@@ -201,7 +202,8 @@ class Level:
     @classmethod
     def get_default_set(cls):
         level_maps = cls.load_level_maps()
-        return [cls(level_map) for level_map in level_maps]
+        maps_num = len(level_maps)
+        return [cls(level_map, is_final=i == maps_num) for i, level_map in enumerate(level_maps, start=1)]
 
     @staticmethod
     def load_level_maps():

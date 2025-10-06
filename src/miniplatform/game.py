@@ -10,8 +10,11 @@ from miniplatform.levels import Level
 class Game:
 
     def __init__(self):
-        self._font = pygame.font.Font(None, 48)
+        self._font = pygame.font.Font(None, 72)
         self._end_text = self._font.render("Congratulations, You Won!", True, (0, 0, 0))
+        self._end_text_rect = self._end_text.get_rect(
+            center = (configs.WINDOW_WIDTH * 0.5, configs.WINDOW_HEIGHT * 0.5),
+        )
 
         self.levels = Level.get_default_set()
         self.level = None
@@ -38,6 +41,7 @@ class Game:
                     self.next_level()
                 except IndexError:
                     self.level = None
+                    effects.play_soundtrack(name="ending")
                 else:
                     self.level.reset()
             else:
@@ -50,7 +54,7 @@ class Game:
             self.level.redraw(screen)
 
     def _draw_game_over(self, screen):
-        screen.blit(self._end_text, (configs.WINDOW_WIDTH * 0.1, configs.WINDOW_HEIGHT * 0.3))
+        screen.blit(self._end_text, self._end_text_rect)
 
     def next_level(self):
         self.level = self.levels.pop(0)

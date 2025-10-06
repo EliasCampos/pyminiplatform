@@ -26,7 +26,7 @@ class Sound(enum.Enum):
             sound_channel.play(self._sound)
 
 
-def play_soundtrack():
-    soundtrack_path = STATIC_DIR / "music" / "soundtrack.ogg"
+def play_soundtrack(name="soundtrack"):
+    soundtrack_path = STATIC_DIR / "music" / f"{name}.ogg"
     pygame.mixer.music.load(str(soundtrack_path))
     pygame.mixer.music.play(-1)
