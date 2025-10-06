@@ -7,7 +7,8 @@ from miniplatform.game import Game
 def main():
     pygame.init()
 
-    screen = pygame.display.set_mode((configs.WINDOW_WIDTH, configs.WINDOW_HEIGHT))
+    video_info = pygame.display.Info()
+    screen = pygame.display.set_mode((video_info.current_w, video_info.current_h))
     pygame.display.set_caption("Mini platform")
 
     clock = pygame.time.Clock()
