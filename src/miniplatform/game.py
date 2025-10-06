@@ -13,7 +13,7 @@ class Game:
         self._font = pygame.font.Font(None, 72)
         self._end_text = self._font.render("Congratulations, You Won!", True, (0, 0, 0))
         self._end_text_rect = self._end_text.get_rect(
-            center = (configs.WINDOW_WIDTH * 0.5, configs.WINDOW_HEIGHT * 0.5),
+            center=tuple(size * 0.5 for size in pygame.display.get_window_size()),
         )
 
         self.levels = Level.get_default_set()

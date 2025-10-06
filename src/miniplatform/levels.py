@@ -5,7 +5,7 @@ import operator
 import pygame
 
 from miniplatform import effects
-from miniplatform.configs import config, WINDOW_WIDTH, WINDOW_HEIGHT, STATIC_DIR, adjust_color
+from miniplatform.configs import config, STATIC_DIR, adjust_color
 from miniplatform.entities import Block, Lava, Coin, Player
 
 
@@ -32,12 +32,13 @@ class Level:
         info_margin = 0.01
         bar_margin = 5
         bar_size = (self.BAR_WIDTH, 20)
+        w_width, w_height = pygame.display.get_window_size()
         self.time_stop_back_bar = pygame.Rect(
-            (WINDOW_WIDTH * info_margin, WINDOW_HEIGHT * info_margin),
+            (w_width * info_margin, w_height * info_margin),
             tuple(size + bar_margin * 2 for size in bar_size),
         )
         self.time_stop_bar = pygame.Rect(
-            (WINDOW_WIDTH * info_margin + bar_margin, WINDOW_HEIGHT * info_margin + bar_margin),
+            (w_width * info_margin + bar_margin, w_height * info_margin + bar_margin),
             bar_size,
         )
 
@@ -106,8 +107,9 @@ class Level:
         self._handle_keypress(time)
         self.player.update(time, level=self)
 
-        config.offset_x = self.player.rect.x - WINDOW_WIDTH // 2
-        config.offset_y = self.player.rect.y - WINDOW_HEIGHT // 2
+        w_width, w_height = pygame.display.get_window_size()
+        config.offset_x = self.player.rect.x - w_width // 2
+        config.offset_y = self.player.rect.y - w_height // 2
 
         for entity in self.entities:
             entity.update(time, level=self)
