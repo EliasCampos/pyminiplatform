@@ -38,6 +38,7 @@ class Game:
                     self.next_level()
                 except IndexError:
                     self.level = None
+                    effects.play_soundtrack(name="ending")
                 else:
                     self.level.reset()
             else:
