@@ -7,23 +7,31 @@ import pygame
 
 from miniplatform.configs import config, adjust_color
 from miniplatform.effects import Sound
+from miniplatform.serializers import Serializable
 
 
-class Entity(abc.ABC):
+class Entity(Serializable):
 
     def __init__(self, location):
         self.location = location
 
     def update(self, time, level):
         self.update_state(time, level)
-        self.alight_sprite()
 
     @abc.abstractmethod
     def update_state(self, time, level):
         ...
 
-    @abc.abstractmethod
     def render(self, screen):
+        self.sprite.center = self.rect.center
+
+        self.sprite.left -= config.offset_x
+        self.sprite.top -= config.offset_y
+
+        self.render_entity(screen)
+
+    @abc.abstractmethod
+    def render_entity(self, screen):
         ...
 
     @abc.abstractmethod
@@ -40,12 +48,6 @@ class Entity(abc.ABC):
 
     def collides(self, entity):
         return self.rect.colliderect(entity.rect)
-
-    def alight_sprite(self):
-        self.sprite.center = self.rect.center
-
-        self.sprite.left -= config.offset_x
-        self.sprite.top -= config.offset_y
 
 
 class Player(Entity):
@@ -90,7 +92,7 @@ class Player(Entity):
             self.HEIGHT,
         )
 
-    def render(self, screen):
+    def render_entity(self, screen):
         if self._is_dead:
             color = (255, 0, 0)
         elif self._is_won:
@@ -154,19 +156,38 @@ class Player(Entity):
             if self.dy > 0:
                 self.rect.bottom = block.rect.top
                 self.is_on_ground = True
-            if self.dy < 0:
+            elif self.dy < 0:
                 self.rect.top = block.rect.bottom
             self.dy = 0
+
+    @classmethod
+    def to_internal_value(cls, data):
+        data.pop("type")
+        location = pygame.Vector2(data.pop("location"))
+        obj = cls(location=location)
+        for key, value in data.items():
+            setattr(obj, key, value)
+        return obj
+
+    def to_representation(self):
+        return {
+            "type": "player",
+            "location": [self.rect.x, self.rect.y],
+            "dx": self.dx,
+            "dy": self.dy,
+            "is_on_ground": self.is_on_ground,
+            "_is_won": self._is_won,
+            "_is_dead": self._is_dead,
+            "_finalization_time": self._finalization_time,
+        }
 
 
 class Lava(Entity):
     SCALE = 0.9
 
-    def __init__(self, location, direction, is_repeatable):
-        margin = Block.SIZE * (1 - self.SCALE) * 0.5
-        super().__init__(
-            location=location + pygame.Vector2(margin, margin)
-        )
+    def __init__(self, location, direction, is_repeatable, init_location=None):
+        super().__init__(location=location + self.margin)
+        self.init_location = init_location or location
         self.direction = direction
         self.is_repeatable = is_repeatable
 
@@ -180,7 +201,7 @@ class Lava(Entity):
         size = Block.SIZE * self.SCALE
         return pygame.Rect(self.location.x, self.location.y, size, size)
 
-    def render(self, screen):
+    def render_entity(self, screen):
         color = (255, 100, 100)
         pygame.draw.rect(screen, adjust_color(color), self.sprite)
 
@@ -189,10 +210,43 @@ class Lava(Entity):
             if self.collides(entity):
                 if isinstance(entity, Block):
                     if self.is_repeatable:
-                        self.rect.left = self.location.x
-                        self.rect.top = self.location.y
+                        self.rect.left = self.init_location.x
+                        self.rect.top = self.init_location.y
                     else:
+                        if self.direction.x > 0:
+                            self.rect.right = entity.rect.left
+                        elif self.direction.x < 0:
+                            self.rect.left = entity.rect.right
+                        if self.direction.y > 0:
+                            self.rect.bottom = entity.rect.top
+                        elif self.direction.y < 0:
+                            self.rect.top = entity.rect.bottom
                         self.direction.rotate_ip(180)
+
+    @property
+    def margin(self):
+        margin = Block.SIZE * (1 - self.SCALE) * 0.5
+        return pygame.Vector2(margin, margin)
+
+    @classmethod
+    def to_internal_value(cls, data):
+        data.pop("type")
+        location = pygame.Vector2(data.pop("location"))
+        init_location = pygame.Vector2(data.pop("init_location"))
+        direction = pygame.Vector2(data.pop("direction"))
+        is_repeatable = data.pop("is_repeatable")
+        obj = cls(location=location, direction=direction, is_repeatable=is_repeatable, init_location=init_location)
+        return obj
+
+    def to_representation(self):
+        location = pygame.Vector2(self.rect.x, self.rect.y) - self.margin
+        return {
+            "type": "lava",
+            "location": [location.x, location.y],
+            "init_location": [self.init_location.x, self.init_location.y],
+            "direction": [self.direction.x, self.direction.y],
+            "is_repeatable": self.is_repeatable,
+        }
 
 
 class Coin(Entity):
@@ -220,7 +274,7 @@ class Coin(Entity):
             Block.SIZE,
         )
 
-    def render(self, screen):
+    def render_entity(self, screen):
         color = (255, 215, 0)
         radius = Block.SIZE // 3
         pygame.draw.circle(
@@ -233,7 +287,7 @@ class Coin(Entity):
     def _handle_collision(self, level):
         for entity in level.entities:
             if self.collides(entity):
-                if isinstance(entity, (Block, Lava)):
+                if isinstance(entity, Block):
                     if self.wobble > 0:
                         self.rect.bottom = entity.rect.top
                     elif self.wobble < 0:
@@ -243,6 +297,25 @@ class Coin(Entity):
         self.is_free = False
         level.refresh_coins_text()
         Sound.COIN.play()
+
+    @classmethod
+    def to_internal_value(cls, data):
+        data.pop("type")
+        location = pygame.Vector2(data.pop("location"))
+        obj = cls(location=location)
+        for key, value in data.items():
+            setattr(obj, key, value)
+        return obj
+
+    def to_representation(self):
+        return {
+            "type": "coin",
+            "location": [self.rect.x, self.rect.y],
+            "timeline": self.timeline,
+            "wobble": self.wobble,
+            "is_hit": self.is_hit,
+            "is_free": self.is_free,
+        }
 
 
 class Block(Entity):
@@ -254,6 +327,19 @@ class Block(Entity):
     def update_state(self, time, level):
         pass
 
-    def render(self, screen):
+    def render_entity(self, screen):
         color = (60, 60, 60)
         pygame.draw.rect(screen, color, self.sprite)
+
+    @classmethod
+    def to_internal_value(cls, data):
+        data.pop("type")
+        location = pygame.Vector2(data.pop("location"))
+        obj = cls(location=location)
+        return obj
+
+    def to_representation(self):
+        return {
+            "type": "block",
+            "location": [self.rect.x, self.rect.y],
+        }

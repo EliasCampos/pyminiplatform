@@ -4,7 +4,9 @@ import threading
 
 FPS = 60
 
-STATIC_DIR = pathlib.Path(__file__).parent / "static"
+ROOT_DIR = pathlib.Path(__file__).parent
+STATIC_DIR = ROOT_DIR / "static"
+VAR_DIR = ROOT_DIR / "var"
 
 config = threading.local()
 config.offset_x = 0
