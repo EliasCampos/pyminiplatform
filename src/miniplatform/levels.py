@@ -7,9 +7,10 @@ import pygame
 from miniplatform import effects
 from miniplatform.configs import config, STATIC_DIR, adjust_color
 from miniplatform.entities import Block, Lava, Coin, Player
+from miniplatform.serializers import Serializable
 
 
-class Level:
+class Level(Serializable):
     TIME_STOP = 5_000
     TIME_FREEZE = 1_000
     TIME_STOP_IDLE = TIME_STOP + TIME_FREEZE
@@ -68,6 +69,9 @@ class Level:
                     coins.append(coin)
                 elif el == "@":
                     self.player = Player(location)
+                    w_width, w_height = pygame.display.get_window_size()
+                    config.offset_x = self.player.rect.x - w_width // 2
+                    config.offset_y = self.player.rect.y - w_height // 2
                 elif el == "#":
                     block = Block(location)
                     blocks.append(block)
@@ -104,7 +108,6 @@ class Level:
         return any(self.free_coins)
 
     def update(self, time):
-        self._handle_keypress(time)
         self.player.update(time, level=self)
 
         w_width, w_height = pygame.display.get_window_size()
@@ -153,17 +156,6 @@ class Level:
                 factor.set(value)
             effects.Sound.TIME_STOP.play()
 
-    def _handle_keypress(self, time):
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT]:
-            self.player.move_left(time)
-        if keys[pygame.K_RIGHT]:
-            self.player.move_right(time)
-        if keys[pygame.K_UP]:
-            self.player.jump(time)
-        if keys[pygame.K_z]:
-            self.set_time_stop()
-
     def _handle_time_stop(self, time):
         for factor in self._time_factors:
             if factor:
@@ -201,17 +193,55 @@ class Level:
             self.coins_text, True, "black", "white"
         )
 
-    @classmethod
-    def get_default_set(cls):
-        level_maps = cls.load_level_maps()
-        maps_num = len(level_maps)
-        return [cls(level_map, is_final=i == maps_num) for i, level_map in enumerate(level_maps, start=1)]
-
     @staticmethod
     def load_level_maps():
         levels_path = STATIC_DIR / "level_maps.json"
         with levels_path.open("r") as f:
             return json.load(f)
+
+    @classmethod
+    def to_internal_value(cls, data):
+        data.pop("type")
+        player_data = data.pop("player")
+        lavas_data = data.pop("lavas")
+        coins_data = data.pop("coins")
+        blocks_data = data.pop("blocks")
+
+        level_map = data.pop("level_map")
+        is_final = data.pop("is_final")
+
+        time_stop_left = data.pop("_time_stop_left")
+        time_stop_freeze = data.pop("_time_stop_freeze")
+        time_stop_idle = data.pop("_time_stop_idle")
+
+        obj = cls(level_map, is_final=is_final)
+
+        obj.player = Player.to_internal_value(player_data) if player_data else None
+        obj.lavas = tuple([Lava.to_internal_value(data) for data in lavas_data])
+        obj.coins = tuple([Coin.to_internal_value(data) for data in coins_data])
+        obj.blocks = tuple([Block.to_internal_value(data) for data in blocks_data])
+
+        obj._time_stop_left.set(time_stop_left)
+        obj._time_stop_freeze.set(time_stop_freeze)
+        obj._time_stop_idle.set(time_stop_idle)
+
+        obj.refresh_coins_text()
+
+        return obj
+
+    def to_representation(self):
+        return {
+            "type": "level",
+            "player": self.player.to_representation() if self.player else None,
+            "lavas": [lava.to_representation() for lava in self.lavas],
+            "coins": [coin.to_representation() for coin in self.coins],
+            "blocks": [block.to_representation() for block in self.blocks],
+            "level_map": self.level_map,
+            "is_final": self.is_final,
+            "_time_stop_left": self._time_stop_left.value,
+            "_time_stop_freeze": self._time_stop_freeze.value,
+            "_time_stop_idle": self._time_stop_idle.value,
+        }
 
 
 class TimeFactor:

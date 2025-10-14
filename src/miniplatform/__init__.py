@@ -1,10 +1,13 @@
 import pygame
 
-from miniplatform import configs
+from miniplatform import configs, effects
 from miniplatform.game import Game
 
 
 def main():
+    if not configs.VAR_DIR.exists():
+        configs.VAR_DIR.mkdir()
+
     pygame.init()
 
     video_info = pygame.display.Info()
@@ -13,7 +16,9 @@ def main():
 
     clock = pygame.time.Clock()
 
-    game = Game()
+    game_session = Game.load_game()
+    effects.play_soundtrack()
+
     is_running = True
     while is_running:
         frame = clock.tick(configs.FPS)
@@ -22,9 +27,9 @@ def main():
             if event.type == pygame.QUIT:
                 is_running = False
 
-        game.update_state(frame)
+        game_session.update_state(frame)
 
         screen.fill((255, 255, 255))
-        game.render(screen)
+        game_session.render(screen)
 
         pygame.display.flip()
