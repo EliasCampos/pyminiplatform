@@ -1,5 +1,6 @@
 import itertools
 import json
+import math
 import operator
 
 import pygame
@@ -14,26 +15,35 @@ class Level(Serializable):
     TIME_STOP = 5_000
     TIME_FREEZE = 1_000
     TIME_STOP_IDLE = TIME_STOP + TIME_FREEZE
+    TIME_ACCELERATION_SCALE = 20
 
     BAR_WIDTH = 100
 
-    def __init__(self, level_map, is_final=False):
+    def __init__(self, level_map, number, is_final=False):
         self.player = None
         self.lavas = ()
         self.coins = ()
         self.blocks = ()
         self.level_map = level_map
+        self.number = number
         self.is_final = is_final
 
         self._time_stop_left = TimeFactor()
         self._time_stop_freeze = TimeFactor()
         self._time_stop_idle = TimeFactor()
-        self._time_factors = [self._time_stop_left, self._time_stop_freeze, self._time_stop_idle]
+        self._time_stop_factors = [self._time_stop_left, self._time_stop_freeze, self._time_stop_idle]
+
+        w_width, w_height = pygame.display.get_window_size()
+
+        self._time_reset_factor = TimeFactor()
+        self._time_reset_screen = pygame.Surface((w_width, w_height))
+        self._time_reset_screen.fill((255, 255, 255))
+        self._time_reset_screen.set_alpha(0)
 
         info_margin = 0.01
         bar_margin = 5
         bar_size = (self.BAR_WIDTH, 20)
-        w_width, w_height = pygame.display.get_window_size()
+
         self.time_stop_back_bar = pygame.Rect(
             (w_width * info_margin, w_height * info_margin),
             tuple(size + bar_margin * 2 for size in bar_size),
@@ -50,8 +60,9 @@ class Level(Serializable):
     def reset(self):
         self.player = None
 
-        for factor in self._time_factors:
+        for factor in self._time_stop_factors:
             factor.set(0)
+        self._time_reset_factor.set(0)
 
         lavas = []
         coins = []
@@ -126,6 +137,10 @@ class Level(Serializable):
         self.player.render(screen)
         for entity in self.entities:
             entity.render(screen)
+        if self._time_reset_factor:
+            alpha = int(self._time_reset_factor.value * 255)
+            self._time_reset_screen.set_alpha(alpha)
+            screen.blit(self._time_reset_screen, (0, 0))
         self._draw_infographics(screen)
 
     @property
@@ -137,6 +152,10 @@ class Level(Serializable):
         return self.player.is_winner
 
     @property
+    def is_time_stopped(self):
+        return any([self._time_stop_left, self._time_stop_freeze])
+
+    @property
     def speed_factor(self):
         if self._time_stop_left:
             return 0
@@ -144,7 +163,32 @@ class Level(Serializable):
         if self._time_stop_freeze:
             return (self.TIME_FREEZE - self._time_stop_freeze.value) / self.TIME_FREEZE
 
+        if self._time_reset_factor:
+            return 1 + self.time_acceleration
+
         return 1
+
+    @property
+    def color_factor(self):
+        if self._time_stop_left:
+            return 0
+
+        if self._time_stop_freeze:
+            return (self.TIME_FREEZE - self._time_stop_freeze.value) / self.TIME_FREEZE
+
+        if self._time_reset_factor:
+            return 1 + self.time_acceleration
+
+        return 1
+
+    @property
+    def time_acceleration(self):
+        t = self._time_reset_factor.value
+        return self.TIME_ACCELERATION_SCALE * ((1 / (1 + math.exp(-t))) - 0.5)
+
+    @time_acceleration.setter
+    def time_acceleration(self, value):
+        self._time_reset_factor.set(value)
 
     def set_time_stop(self):
         if not (self._time_stop_left or self._time_stop_idle):
@@ -157,7 +201,7 @@ class Level(Serializable):
             effects.Sound.TIME_STOP.play()
 
     def _handle_time_stop(self, time):
-        for factor in self._time_factors:
+        for factor in self._time_stop_factors:
             if factor:
                 factor.decr(time)  # decreasing one by one, not all at once
                 break
@@ -168,7 +212,7 @@ class Level(Serializable):
         elif self._time_stop_idle:
             scale = (self.TIME_STOP_IDLE - self._time_stop_idle.value) / self.TIME_STOP_IDLE
             self.time_stop_bar.width = int(self.BAR_WIDTH * scale)
-        config.color_factor = self.speed_factor
+        config.color_factor = self.color_factor
 
     def _draw_infographics(self, screen):
         pygame.draw.rect(screen, "gray", self.time_stop_back_bar)
@@ -208,13 +252,14 @@ class Level(Serializable):
         blocks_data = data.pop("blocks")
 
         level_map = data.pop("level_map")
+        number = data.pop("number")
         is_final = data.pop("is_final")
 
         time_stop_left = data.pop("_time_stop_left")
         time_stop_freeze = data.pop("_time_stop_freeze")
         time_stop_idle = data.pop("_time_stop_idle")
 
-        obj = cls(level_map, is_final=is_final)
+        obj = cls(level_map, number, is_final=is_final)
 
         obj.player = Player.to_internal_value(player_data) if player_data else None
         obj.lavas = tuple([Lava.to_internal_value(data) for data in lavas_data])
@@ -237,6 +282,7 @@ class Level(Serializable):
             "coins": [coin.to_representation() for coin in self.coins],
             "blocks": [block.to_representation() for block in self.blocks],
             "level_map": self.level_map,
+            "number": self.number,
             "is_final": self.is_final,
             "_time_stop_left": self._time_stop_left.value,
             "_time_stop_freeze": self._time_stop_freeze.value,

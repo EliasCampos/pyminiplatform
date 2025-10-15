@@ -1,0 +1,4 @@
+
+
+class FinishedGameException(Exception):
+    pass

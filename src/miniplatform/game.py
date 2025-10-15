@@ -1,17 +1,18 @@
 import threading
 import json
-import os
 
 import pygame
 
 from miniplatform import effects
 from miniplatform.configs import VAR_DIR
+from miniplatform.exceptions import FinishedGameException
 from miniplatform.levels import Level
 from miniplatform.serializers import Serializable
 
 
 class Game(Serializable):
     SAVE_GAME_DELAY = 1_000  # every second
+    GAME_RESET_DELAY = 10_000
 
     def __init__(self, level_maps=None):
         window_sizes = pygame.display.get_window_size()
@@ -29,6 +30,9 @@ class Game(Serializable):
         self._save_game_delay = self.SAVE_GAME_DELAY
         self._save_game_thread = None
 
+        self._is_game_reset = False
+        self._game_reset_time = 0
+
     def update_state(self, time):
         if not self.level:
             return
@@ -41,6 +45,12 @@ class Game(Serializable):
         self._handle_keypress(time)
         self.level.update(time)
 
+        if self._is_game_reset:
+            self._game_reset_time += time
+            self.level.time_acceleration = self._game_reset_time / self.GAME_RESET_DELAY
+            if self._game_reset_time >= self.GAME_RESET_DELAY:
+                self.reset_game()
+
         if not self.level.is_running:
             if self.level.is_complete:
                 try:
@@ -48,11 +58,11 @@ class Game(Serializable):
                 except IndexError:
                     self._finish_off()
                 else:
-                    self.level.reset()
-                    self.save_game()
+                    print("COMPLETE")
+                    self.reset_level()
             else:
-                self.level.reset()
-                self.save_game()
+                print("NOT COMPLETE")
+                self.reset_level()
 
     def render(self, screen):
         if not self.level:
@@ -61,8 +71,30 @@ class Game(Serializable):
             self.level.redraw(screen)
 
     def next_level(self):
-        level_maps = self.level_maps.pop(0)
-        self.level = Level(level_maps, is_final=not self.level_maps)
+        level_number = self.level.number + 1 if self.level else 0
+        try:
+            level_map = self.level_maps[level_number]
+        except IndexError:
+            raise FinishedGameException(f"All {level_number} levels complete")
+        else:
+            self.level = Level(
+                level_map,
+                number=level_number,
+                is_final=level_number == len(self.level_maps) - 1
+            )
+
+    def reset_game(self):
+        self._is_game_reset = False
+        self._game_reset_time = 0
+        self.level = None
+        self.next_level()
+        self.reset_level()
+
+        effects.play_soundtrack()
+
+    def reset_level(self):
+        self.level.reset()
+        self.save_game()
 
     def _handle_keypress(self, time):
         keys = pygame.key.get_pressed()
@@ -74,6 +106,11 @@ class Game(Serializable):
             self.level.player.jump(time)
         if keys[pygame.K_z]:
             self.level.set_time_stop()
+        if keys[pygame.K_r]:
+            if not self._is_game_reset and not (self.level and self.level.is_time_stopped):
+                self._is_game_reset = True
+                effects.Sound.WORLD_RESET.play()
+                pygame.mixer_music.fadeout(int(self.GAME_RESET_DELAY * 0.9))
 
     @classmethod
     def to_internal_value(cls, data):
