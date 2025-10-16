@@ -294,6 +294,7 @@ class Coin(Entity):
 
     def set_taken(self, level):
         self.is_free = False
+        level.time_to_reset += level.COIN_TIME
         level.refresh_coins_text()
         Sound.COIN.play()
 

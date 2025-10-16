@@ -1,3 +1,4 @@
+import datetime
 import itertools
 import json
 import math
@@ -18,6 +19,11 @@ class Level(Serializable):
     TIME_ACCELERATION_SCALE = 20
 
     BAR_WIDTH = 100
+
+    COIN_TIME = 5_000
+    INITIAL_TIME = 15_000
+    LEVEL_BONUS_TIME = 5_000
+    WARNING_TIME = 5_000
 
     def __init__(self, level_map, number, is_final=False):
         self.player = None
@@ -52,6 +58,8 @@ class Level(Serializable):
             (w_width * info_margin + bar_margin, w_height * info_margin + bar_margin),
             bar_size,
         )
+
+        self.time_to_reset = self.INITIAL_TIME + self.number * self.LEVEL_BONUS_TIME
 
         self.info_font = pygame.font.Font(None, 24)
         self.coins_surface = None
@@ -94,6 +102,8 @@ class Level(Serializable):
         self.time_stop_bar.width = self.BAR_WIDTH
         self.refresh_coins_text()
 
+        self.time_to_reset = self.INITIAL_TIME + self.number * self.LEVEL_BONUS_TIME
+
     @property
     def entities(self):
         return itertools.chain(
@@ -132,6 +142,7 @@ class Level(Serializable):
             self.player.set_won(level=self)
         else:
             self._handle_time_stop(time)
+            self.time_to_reset -= time * int(self.speed_factor)
 
     def redraw(self, screen):
         self.player.render(screen)
@@ -217,24 +228,42 @@ class Level(Serializable):
     def _draw_infographics(self, screen):
         pygame.draw.rect(screen, "gray", self.time_stop_back_bar)
         if self._time_stop_left or self._time_stop_freeze:
-            color = adjust_color((0, 255, 0))
+            time_left_text_color = adjust_color((0, 255, 0))
         elif self._time_stop_idle:
-            color = (0, 125, 0)
+            time_left_text_color = (0, 125, 0)
         else:
-            color = (0, 255, 0)
-        pygame.draw.rect(screen, color, self.time_stop_bar)
+            time_left_text_color = (0, 255, 0)
+        pygame.draw.rect(screen, time_left_text_color, self.time_stop_bar)
 
         coins_text_margin = 10
         coins_text_pos = (self.time_stop_back_bar.left, self.time_stop_back_bar.bottom + coins_text_margin)
         screen.blit(self.coins_surface, coins_text_pos)
 
+        # Time info:
+        if self.is_time_stopped:
+            time_left_text = f"ZA WARUDO!"
+            time_left_text_color = "goldenrod"
+        elif self.time_to_reset > 0:
+            time_left_text = f"Time left: {self.time_to_reset // 1000}"
+            time_left_text_color = "black" if self.time_to_reset >= self.WARNING_TIME else "red"
+        else:
+            time_left_text = "MADE IN HEAVEN!"
+            time_left_text_color = "blueviolet"
+        time_left_surface = self.info_font.render(
+            time_left_text, True, time_left_text_color, "white"
+        )
+        c_w, c_h = self.coins_surface.get_size()
+        time_left_post = (self.time_stop_back_bar.left, self.time_stop_back_bar.bottom + c_h + coins_text_margin)
+        screen.blit(time_left_surface, time_left_post)
+
     @property
     def coins_text(self):
-        return f"Coins: {self.collected_coins_number} / {self.coins_number}"
+        return f"coins: {self.collected_coins_number} / {self.coins_number}"
 
     def refresh_coins_text(self):
+        coins_text = f"Coins: {self.collected_coins_number} / {self.coins_number}"
         self.coins_surface = self.info_font.render(
-            self.coins_text, True, "black", "white"
+            coins_text, True, "black", "white"
         )
 
     @staticmethod
@@ -259,6 +288,8 @@ class Level(Serializable):
         time_stop_freeze = data.pop("_time_stop_freeze")
         time_stop_idle = data.pop("_time_stop_idle")
 
+        time_to_reset = data.pop("time_to_reset")
+
         obj = cls(level_map, number, is_final=is_final)
 
         obj.player = Player.to_internal_value(player_data) if player_data else None
@@ -271,6 +302,8 @@ class Level(Serializable):
         obj._time_stop_idle.set(time_stop_idle)
 
         obj.refresh_coins_text()
+
+        obj.time_to_reset = time_to_reset
 
         return obj
 
@@ -287,6 +320,7 @@ class Level(Serializable):
             "_time_stop_left": self._time_stop_left.value,
             "_time_stop_freeze": self._time_stop_freeze.value,
             "_time_stop_idle": self._time_stop_idle.value,
+            "time_to_reset": self.time_to_reset,
         }
 
 

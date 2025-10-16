@@ -50,12 +50,14 @@ class Game(Serializable):
             self.level.time_acceleration = self._game_reset_time / self.GAME_RESET_DELAY
             if self._game_reset_time >= self.GAME_RESET_DELAY:
                 self.reset_game()
+        elif self.level.time_to_reset <= 0:
+            self._set_off_game_reset()
 
         if not self.level.is_running:
             if self.level.is_complete:
                 try:
                     self.next_level()
-                except IndexError:
+                except FinishedGameException:
                     self._finish_off()
                 else:
                     print("COMPLETE")
@@ -106,11 +108,6 @@ class Game(Serializable):
             self.level.player.jump(time)
         if keys[pygame.K_z]:
             self.level.set_time_stop()
-        if keys[pygame.K_r]:
-            if not self._is_game_reset and not (self.level and self.level.is_time_stopped):
-                self._is_game_reset = True
-                effects.Sound.WORLD_RESET.play()
-                pygame.mixer_music.fadeout(int(self.GAME_RESET_DELAY * 0.9))
 
     @classmethod
     def to_internal_value(cls, data):
@@ -157,6 +154,12 @@ class Game(Serializable):
         if saved_game_file.exists():
             saved_game_file.unlink()  # delete the save
         effects.play_soundtrack(name="ending")
+
+    def _set_off_game_reset(self):
+        if not self._is_game_reset and not (self.level and self.level.is_time_stopped):
+            self._is_game_reset = True
+            effects.Sound.WORLD_RESET.play()
+            pygame.mixer_music.fadeout(int(self.GAME_RESET_DELAY * 0.9))
 
     @staticmethod
     def get_saved_game_file():
