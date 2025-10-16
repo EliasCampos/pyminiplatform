@@ -1,4 +1,3 @@
-import datetime
 import itertools
 import json
 import math
@@ -10,6 +9,7 @@ from miniplatform import effects
 from miniplatform.configs import config, STATIC_DIR, adjust_color
 from miniplatform.entities import Block, Lava, Coin, Player
 from miniplatform.serializers import Serializable
+from miniplatform.utils import TimeFactor
 
 
 class Level(Serializable):
@@ -20,12 +20,9 @@ class Level(Serializable):
 
     BAR_WIDTH = 100
 
-    COIN_TIME = 5_000
-    INITIAL_TIME = 15_000
-    LEVEL_BONUS_TIME = 5_000
-    WARNING_TIME = 5_000
+    WARNING_TIME = 30_000
 
-    def __init__(self, level_map, number, is_final=False):
+    def __init__(self, level_map, number, is_final=False, time_to_reset_factor=None):
         self.player = None
         self.lavas = ()
         self.coins = ()
@@ -59,7 +56,7 @@ class Level(Serializable):
             bar_size,
         )
 
-        self.time_to_reset = self.INITIAL_TIME + self.number * self.LEVEL_BONUS_TIME
+        self._game_time_to_reset_factor = time_to_reset_factor
 
         self.info_font = pygame.font.Font(None, 24)
         self.coins_surface = None
@@ -102,8 +99,6 @@ class Level(Serializable):
         self.time_stop_bar.width = self.BAR_WIDTH
         self.refresh_coins_text()
 
-        self.time_to_reset = self.INITIAL_TIME + self.number * self.LEVEL_BONUS_TIME
-
     @property
     def entities(self):
         return itertools.chain(
@@ -142,7 +137,6 @@ class Level(Serializable):
             self.player.set_won(level=self)
         else:
             self._handle_time_stop(time)
-            self.time_to_reset -= time * int(self.speed_factor)
 
     def redraw(self, screen):
         self.player.render(screen)
@@ -239,22 +233,26 @@ class Level(Serializable):
         coins_text_pos = (self.time_stop_back_bar.left, self.time_stop_back_bar.bottom + coins_text_margin)
         screen.blit(self.coins_surface, coins_text_pos)
 
-        # Time info:
-        if self.is_time_stopped:
-            time_left_text = f"ZA WARUDO!"
-            time_left_text_color = "goldenrod"
-        elif self.time_to_reset > 0:
-            time_left_text = f"Time left: {self.time_to_reset // 1000}"
-            time_left_text_color = "black" if self.time_to_reset >= self.WARNING_TIME else "red"
-        else:
-            time_left_text = "MADE IN HEAVEN!"
-            time_left_text_color = "blueviolet"
-        time_left_surface = self.info_font.render(
-            time_left_text, True, time_left_text_color, "white"
-        )
-        c_w, c_h = self.coins_surface.get_size()
-        time_left_post = (self.time_stop_back_bar.left, self.time_stop_back_bar.bottom + c_h + coins_text_margin)
-        screen.blit(time_left_surface, time_left_post)
+        if self._game_time_to_reset_factor is not None:
+            time_left = self._game_time_to_reset_factor.value
+            if self.is_time_stopped:
+                time_left_text = f"ZA WARUDO!"
+                time_left_text_color = "goldenrod"
+            elif time_left > 0:
+                time_left_text = f"Time left: {time_left // 1000}"
+                time_left_text_color = "black" if time_left >= self.WARNING_TIME else "red"
+            else:
+                time_left_text = "MADE IN HEAVEN!"
+                time_left_text_color = "blueviolet"
+            time_left_surface = self.info_font.render(
+                time_left_text, True, time_left_text_color, "white"
+            )
+            _, coin_bar_shift = self.coins_surface.get_size()
+            time_left_post = (
+                self.time_stop_back_bar.left,
+                self.time_stop_back_bar.bottom + coin_bar_shift + coins_text_margin,
+            )
+            screen.blit(time_left_surface, time_left_post)
 
     @property
     def coins_text(self):
@@ -288,8 +286,6 @@ class Level(Serializable):
         time_stop_freeze = data.pop("_time_stop_freeze")
         time_stop_idle = data.pop("_time_stop_idle")
 
-        time_to_reset = data.pop("time_to_reset")
-
         obj = cls(level_map, number, is_final=is_final)
 
         obj.player = Player.to_internal_value(player_data) if player_data else None
@@ -302,8 +298,6 @@ class Level(Serializable):
         obj._time_stop_idle.set(time_stop_idle)
 
         obj.refresh_coins_text()
-
-        obj.time_to_reset = time_to_reset
 
         return obj
 
@@ -320,20 +314,4 @@ class Level(Serializable):
             "_time_stop_left": self._time_stop_left.value,
             "_time_stop_freeze": self._time_stop_freeze.value,
             "_time_stop_idle": self._time_stop_idle.value,
-            "time_to_reset": self.time_to_reset,
         }
-
-
-class TimeFactor:
-
-    def __init__(self, value=0):
-        self.value = value
-
-    def decr(self, value):
-        self.value -= value
-
-    def set(self, value):
-        self.value = value
-
-    def __bool__(self):
-        return self.value > 0
