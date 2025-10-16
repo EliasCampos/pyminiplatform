@@ -54,14 +54,16 @@ class Game(Serializable):
         self.level.update(time)
 
         if self._time_to_reset_factor:
-            self._time_to_reset_factor.decr(time)
-        elif self._is_game_reset:
-            self._game_reset_time += time
-            self.level.time_acceleration = self._game_reset_time / self.GAME_RESET_DELAY
-            if self._game_reset_time >= self.GAME_RESET_DELAY:
-                self.reset_game()
+            if self.level.has_free_coins:  # the level's not over yet
+                self._time_to_reset_factor.decr(time)
         else:
-            self._set_off_game_reset()
+            if self._is_game_reset:
+                self._game_reset_time += time
+                self.level.time_acceleration = self._game_reset_time / self.GAME_RESET_DELAY
+                if self._game_reset_time >= self.GAME_RESET_DELAY:
+                    self.reset_game()
+            else:
+                self._set_off_game_reset()
 
         if not self.level.is_running:
             if self.level.is_complete:
@@ -93,7 +95,8 @@ class Game(Serializable):
                 is_final=level_number == len(self.level_maps) - 1,
                 time_to_reset_factor=self._time_to_reset_factor,
             )
-            self._time_to_reset_factor.incr(level_number * self.LEVEL_BONUS_TIME)
+            if not self._is_game_reset:
+                self._time_to_reset_factor.incr(level_number * self.LEVEL_BONUS_TIME)
 
     def reset_game(self):
         self._is_game_reset = False

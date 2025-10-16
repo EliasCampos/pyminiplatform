@@ -116,6 +116,10 @@ class Player(Entity):
         self.location = position
 
     @property
+    def is_alive(self):
+        return not self._is_dead
+
+    @property
     def is_dead(self):
         return not self._is_won and self._is_dead and self._finalization_time <= 0
 
@@ -123,6 +127,7 @@ class Player(Entity):
         if not (self._is_won or self._is_dead):
             self._is_dead = True
             Sound.FAIL.play()
+            config.color_factor = 1
 
     @property
     def is_winner(self):
@@ -132,8 +137,9 @@ class Player(Entity):
         if not (self._is_won or self._is_dead):
             self._is_won = True
             Sound.VICTORY.play()
-        if level.is_final:
-            pygame.mixer.music.fadeout(self._finalization_time)
+            if level.is_final:
+                pygame.mixer.music.fadeout(self._finalization_time)
+            config.color_factor = 1
 
     def _handle_collision(self, level, is_vertical):
         for entity in level.entities:

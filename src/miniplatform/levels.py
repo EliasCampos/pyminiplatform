@@ -135,7 +135,7 @@ class Level(Serializable):
 
         if not self.has_free_coins:
             self.player.set_won(level=self)
-        else:
+        elif self.player.is_alive:
             self._handle_time_stop(time)
 
     def redraw(self, screen):
@@ -177,13 +177,8 @@ class Level(Serializable):
     def color_factor(self):
         if self._time_stop_left:
             return 0
-
         if self._time_stop_freeze:
-            return (self.TIME_FREEZE - self._time_stop_freeze.value) / self.TIME_FREEZE
-
-        if self._time_reset_factor:
-            return 1 + self.time_acceleration
-
+            return 1 - (self._time_stop_freeze.value / self.TIME_FREEZE)
         return 1
 
     @property
