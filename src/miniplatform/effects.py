@@ -1,4 +1,5 @@
 import enum
+from functools import cached_property
 
 import pygame
 
@@ -11,7 +12,7 @@ class Sound(enum.Enum):
     JUMP = 2, "jump.wav"
     COIN = 3, "coin.wav"
     TIME_STOP = 4, "time_stop.wav"
-    WORLD_RESET = 4, "world_reset.wav"
+    WORLD_RESET = 5, "world_reset.wav"
 
     def __init__(self, channel_id, filename):
         self._channel_id = channel_id
@@ -22,9 +23,24 @@ class Sound(enum.Enum):
         if not self._sound:
             self._sound = pygame.mixer.Sound(str(self._sound_path))
 
-        sound_channel = pygame.mixer.Channel(self._channel_id)
-        if not sound_channel.get_busy():
-            sound_channel.play(self._sound)
+        if not self.sound_channel.get_busy():
+            self.sound_channel.play(self._sound)
+
+    def pause(self):
+        if self._sound and self.sound_channel.get_busy():
+            self.sound_channel.pause()
+
+    def unpause(self):
+        if self._sound and self.sound_channel.get_busy():
+            self.sound_channel.unpause()
+
+    def stop(self):
+        if self._sound and self.sound_channel.get_busy():
+            self.sound_channel.stop()
+
+    @cached_property
+    def sound_channel(self):
+        return pygame.mixer.Channel(self._channel_id)
 
 
 def play_soundtrack(name="soundtrack"):

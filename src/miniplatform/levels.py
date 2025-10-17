@@ -173,7 +173,7 @@ class Level(Serializable):
             return (self.TIME_FREEZE - self._time_stop_freeze.value) / self.TIME_FREEZE
 
         if self._time_reset_factor:
-            return 1 + self.time_acceleration
+            return self.time_acceleration
 
         return 1
 
@@ -187,8 +187,11 @@ class Level(Serializable):
 
     @property
     def time_acceleration(self):
+        if not self._time_reset_factor:
+            return 1
+
         t = self._time_reset_factor.value
-        return self.TIME_ACCELERATION_SCALE * ((1 / (1 + math.exp(-t))) - 0.5)
+        return 1 + self.TIME_ACCELERATION_SCALE * ((1 / (1 + math.exp(-t))) - 0.5)
 
     @time_acceleration.setter
     def time_acceleration(self, value):
@@ -198,12 +201,15 @@ class Level(Serializable):
         if not (self._time_stop_left or self._time_stop_idle):
             for factor, value in self._time_stop_factors.items():
                 factor.set(value)
+            if self._time_reset_factor:
+                effects.Sound.WORLD_RESET.pause()
             effects.Sound.TIME_STOP.play()
 
     def _handle_time_stop(self, time):
+        is_frozen = bool(self._time_stop_freeze)
         for factor in self._time_stop_factors:
             if factor:
-                factor -= time  # decreasing one by one, not all at once
+                factor -= time * self.time_acceleration  # decreasing one by one, not all at once
                 break
         if self._time_stop_left or self._time_stop_freeze:
             charge = sum([factor.value for factor in (self._time_stop_left, self._time_stop_freeze)])
@@ -213,6 +219,9 @@ class Level(Serializable):
             scale = (self.TIME_STOP_IDLE - self._time_stop_idle.value) / self.TIME_STOP_IDLE
             self.time_stop_bar.width = int(self.BAR_WIDTH * scale)
         config.color_factor = self.color_factor
+        if is_frozen and not self._time_stop_freeze:
+            effects.Sound.TIME_STOP.stop()
+            effects.Sound.WORLD_RESET.unpause()
 
     def _draw_infographics(self, screen):
         pygame.draw.rect(screen, "gray", self.time_stop_back_bar)
