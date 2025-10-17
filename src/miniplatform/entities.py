@@ -81,7 +81,7 @@ class Player(Entity):
         )
         self._handle_collision(level, is_vertical=False)
         if self._is_dead or self._is_won:
-            self._finalization_time -= time
+            self._finalization_time -= time * level.time_acceleration
         self.dx = 0
 
     def get_rect(self):

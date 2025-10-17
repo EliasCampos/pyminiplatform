@@ -54,10 +54,10 @@ class Game(Serializable):
         self.level.update(time)
 
         if self._time_to_reset_factor:
-            if self.level.has_free_coins:  # the level's not over yet
+            if self.level.has_free_coins and not self.level.is_time_stopped:
                 self._time_to_reset_factor -= time
         else:
-            if self._is_game_reset:
+            if self._is_game_reset and not self.level.is_time_stopped:
                 self._game_reset_time += time
                 self.level.time_acceleration = self._game_reset_time / self.GAME_RESET_DELAY
                 if self._game_reset_time >= self.GAME_RESET_DELAY:
@@ -106,6 +106,7 @@ class Game(Serializable):
         self.next_level()
         self.reset_level()
 
+        effects.Sound.WORLD_RESET.sound_channel.stop()
         effects.play_soundtrack()
 
     def reset_level(self):
@@ -120,7 +121,7 @@ class Game(Serializable):
             self.level.player.move_right(time)
         if keys[pygame.K_UP]:
             self.level.player.jump(time)
-        if keys[pygame.K_z] and not self._is_game_reset:
+        if keys[pygame.K_z]:
             self.level.set_time_stop()
 
     @classmethod
@@ -176,7 +177,8 @@ class Game(Serializable):
         if not self._is_game_reset and not (self.level and self.level.is_time_stopped):
             self._is_game_reset = True
             effects.Sound.WORLD_RESET.play()
-            pygame.mixer_music.fadeout(int(self.GAME_RESET_DELAY * 0.9))
+            fadeout_time = int(self.GAME_RESET_DELAY * 0.5)
+            pygame.mixer_music.fadeout(fadeout_time)
 
     @staticmethod
     def get_saved_game_file():
