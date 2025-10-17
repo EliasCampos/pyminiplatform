@@ -34,7 +34,11 @@ class Level(Serializable):
         self._time_stop_left = TimeFactor()
         self._time_stop_freeze = TimeFactor()
         self._time_stop_idle = TimeFactor()
-        self._time_stop_factors = [self._time_stop_left, self._time_stop_freeze, self._time_stop_idle]
+        self._time_stop_factors = {
+            self._time_stop_left: self.TIME_STOP,
+            self._time_stop_freeze: self.TIME_FREEZE,
+            self._time_stop_idle: self.TIME_STOP_IDLE,
+        }
 
         w_width, w_height = pygame.display.get_window_size()
 
@@ -192,18 +196,14 @@ class Level(Serializable):
 
     def set_time_stop(self):
         if not (self._time_stop_left or self._time_stop_idle):
-            for factor, value in (
-                (self._time_stop_left, self.TIME_STOP),
-                (self._time_stop_freeze, self.TIME_FREEZE),
-                (self._time_stop_idle, self.TIME_STOP_IDLE),
-            ):
+            for factor, value in self._time_stop_factors.items():
                 factor.set(value)
             effects.Sound.TIME_STOP.play()
 
     def _handle_time_stop(self, time):
         for factor in self._time_stop_factors:
             if factor:
-                factor.decr(time)  # decreasing one by one, not all at once
+                factor -= time  # decreasing one by one, not all at once
                 break
         if self._time_stop_left or self._time_stop_freeze:
             charge = sum([factor.value for factor in (self._time_stop_left, self._time_stop_freeze)])

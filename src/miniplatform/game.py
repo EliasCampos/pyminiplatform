@@ -55,7 +55,7 @@ class Game(Serializable):
 
         if self._time_to_reset_factor:
             if self.level.has_free_coins:  # the level's not over yet
-                self._time_to_reset_factor.decr(time)
+                self._time_to_reset_factor -= time
         else:
             if self._is_game_reset:
                 self._game_reset_time += time
@@ -96,14 +96,13 @@ class Game(Serializable):
                 time_to_reset_factor=self._time_to_reset_factor,
             )
             if not self._is_game_reset:
-                self._time_to_reset_factor.incr(level_number * self.LEVEL_BONUS_TIME)
+                self._time_to_reset_factor += level_number * self.LEVEL_BONUS_TIME
 
     def reset_game(self):
         self._is_game_reset = False
         self._game_reset_time = 0
         self.level = None
         self._time_to_reset_factor.set(self.INITIAL_TIME)
-        self._is_game_reset = True
         self.next_level()
         self.reset_level()
 
@@ -121,7 +120,7 @@ class Game(Serializable):
             self.level.player.move_right(time)
         if keys[pygame.K_UP]:
             self.level.player.jump(time)
-        if keys[pygame.K_z]:
+        if keys[pygame.K_z] and not self._is_game_reset:
             self.level.set_time_stop()
 
     @classmethod

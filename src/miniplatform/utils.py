@@ -15,3 +15,11 @@ class TimeFactor:
 
     def __bool__(self):
         return self.value > 0
+
+    def __add__(self, other):
+        self.value += other
+        return self
+
+    def __sub__(self, other):
+        self.value -= other
+        return self
