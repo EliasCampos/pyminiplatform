@@ -116,6 +116,10 @@ class Player(Entity):
         self.location = position
 
     @property
+    def is_alive(self):
+        return not self._is_dead
+
+    @property
     def is_dead(self):
         return not self._is_won and self._is_dead and self._finalization_time <= 0
 
@@ -123,6 +127,7 @@ class Player(Entity):
         if not (self._is_won or self._is_dead):
             self._is_dead = True
             Sound.FAIL.play()
+            config.color_factor = 1
 
     @property
     def is_winner(self):
@@ -132,8 +137,9 @@ class Player(Entity):
         if not (self._is_won or self._is_dead):
             self._is_won = True
             Sound.VICTORY.play()
-        if level.is_final:
-            pygame.mixer.music.fadeout(self._finalization_time)
+            if level.is_final:
+                pygame.mixer.music.fadeout(self._finalization_time)
+            config.color_factor = 1
 
     def _handle_collision(self, level, is_vertical):
         for entity in level.entities:
@@ -250,20 +256,19 @@ class Lava(Entity):
 
 
 class Coin(Entity):
-    FREQ = 0.01
+    WOBBLE_SPEED = 6
+    WOBBLE_DIST = 2
 
-    def __init__(self, location):
+    def __init__(self, location, init_location=None, timeline=None):
         super().__init__(location)
-        self.timeline = math.pi * random.uniform(-1, 1) / self.FREQ
-        self.wobble = 0
-        self.is_hit = False
+        self.init_location = init_location or location.copy()
+        self.timeline = timeline if timeline is not None else 2 * math.pi * random.random()
         self.is_free = True
 
     def update_state(self, time, level):
-        self.timeline += time
-        max_speed = 1.5
-        self.wobble = max_speed * level.speed_factor * math.sin(self.FREQ * self.timeline)
-        self.rect.move_ip(0, self.wobble)
+        self.timeline += time * 1e-3 * self.WOBBLE_SPEED * level.speed_factor
+        wobble = self.WOBBLE_DIST * level.speed_factor * math.sin(self.timeline)
+        self.rect.move_ip(0, wobble)
         self._handle_collision(level)
 
     def get_rect(self):
@@ -288,9 +293,9 @@ class Coin(Entity):
         for entity in level.entities:
             if self.collides(entity):
                 if isinstance(entity, Block):
-                    if self.wobble > 0:
+                    if self.rect.y > 0:
                         self.rect.bottom = entity.rect.top
-                    elif self.wobble < 0:
+                    elif self.rect.y < 0:
                         self.rect.top = entity.rect.bottom
 
     def set_taken(self, level):
@@ -302,7 +307,9 @@ class Coin(Entity):
     def to_internal_value(cls, data):
         data.pop("type")
         location = pygame.Vector2(data.pop("location"))
-        obj = cls(location=location)
+        init_location = pygame.Vector2(data.pop("init_location"))
+        timeline = data.pop("timeline")
+        obj = cls(location=location, init_location=init_location, timeline=timeline)
         for key, value in data.items():
             setattr(obj, key, value)
         return obj
@@ -311,9 +318,8 @@ class Coin(Entity):
         return {
             "type": "coin",
             "location": [self.rect.x, self.rect.y],
+            "init_location": [self.init_location.x, self.init_location.y],
             "timeline": self.timeline,
-            "wobble": self.wobble,
-            "is_hit": self.is_hit,
             "is_free": self.is_free,
         }
 

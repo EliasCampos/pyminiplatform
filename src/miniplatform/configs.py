@@ -16,7 +16,7 @@ config.color_factor = 1
 
 def adjust_color(color):
     factor = config.color_factor
-    if factor  == 1:
+    if factor == 1:
         return color
     return tuple(
         ((255 - p) * (1 - factor) + p * factor) / 2
