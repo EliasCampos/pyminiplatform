@@ -1,5 +1,6 @@
 import abc
 import functools
+import logging
 import math
 import random
 
@@ -125,6 +126,7 @@ class Player(Entity):
 
     def set_dead(self):
         if not (self._is_won or self._is_dead):
+            logging.info("Player has died.")
             self._is_dead = True
             Sound.FAIL.play()
             config.color_factor = 1
@@ -135,6 +137,7 @@ class Player(Entity):
 
     def set_won(self, level):
         if not (self._is_won or self._is_dead):
+            logging.info("Winning level %s ...", level.number)
             self._is_won = True
             Sound.VICTORY.play()
             if level.is_final:

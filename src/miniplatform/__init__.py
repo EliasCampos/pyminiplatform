@@ -1,10 +1,14 @@
 import pygame
+import logging
+import os
 
 from miniplatform import configs, effects
 from miniplatform.game import Game
 
 
 def main():
+    setup_logging()
+
     if not configs.VAR_DIR.exists():
         configs.VAR_DIR.mkdir()
 
@@ -16,6 +20,8 @@ def main():
 
     clock = pygame.time.Clock()
 
+    logging.info("Starting game session")
+
     game_session = Game.load_game()
     effects.play_soundtrack()
 
@@ -26,6 +32,7 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 is_running = False
+                logging.info("Stopping game session (quit event)")
 
         game_session.update_state(frame)
 
@@ -33,3 +40,9 @@ def main():
         game_session.render(screen)
 
         pygame.display.flip()
+
+
+def setup_logging():
+    level_name = os.getenv("MINI_PLATFORM_LOG_LEVEL", logging.getLevelName(logging.INFO))
+    level = logging.getLevelNamesMapping()[level_name]
+    logging.basicConfig(level=level, format='[%(asctime)s][%(filename)s][%(levelname)s] %(message)s')

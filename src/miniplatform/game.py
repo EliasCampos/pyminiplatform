@@ -1,3 +1,4 @@
+import logging
 import threading
 import json
 
@@ -5,7 +6,7 @@ import pygame
 
 from miniplatform import effects
 from miniplatform.configs import VAR_DIR
-from miniplatform.exceptions import FinishedGameException
+from miniplatform.exceptions import NoLevelError
 from miniplatform.levels import Level
 from miniplatform.serializers import Serializable
 from miniplatform.utils import TimeFactor
@@ -61,19 +62,23 @@ class Game(Serializable):
                 self._game_reset_time += time
                 self.level.time_acceleration = self._game_reset_time / self.GAME_RESET_DELAY
                 if self._game_reset_time >= self.GAME_RESET_DELAY:
+                    logging.info("Game has been reset. Re-start.")
                     self.reset_game()
             else:
                 self._set_off_game_reset()
 
         if not self.level.is_running:
             if self.level.is_complete:
+                logging.info("Level %s complete, setting up next", self.level.number)
                 try:
                     self.next_level()
-                except FinishedGameException:
+                except NoLevelError:
+                    logging.info("No more levels left, finishing the game")
                     self._finish_off()
                 else:
                     self.reset_level()
             else:
+                logging.info("Restarting the level %s", self.level.number)
                 self.reset_level()
 
     def render(self, screen):
@@ -87,7 +92,7 @@ class Game(Serializable):
         try:
             level_map = self.level_maps[level_number]
         except IndexError:
-            raise FinishedGameException(f"All {level_number} levels complete")
+            raise NoLevelError(f"All {level_number} levels complete")
         else:
             self.level = Level(
                 level_map,
@@ -175,6 +180,7 @@ class Game(Serializable):
 
     def _set_off_game_reset(self):
         if not self._is_game_reset and not (self.level and self.level.is_time_stopped):
+            logging.info("Resetting game ...")
             self._is_game_reset = True
             effects.Sound.WORLD_RESET.play()
             fadeout_time = int(self.GAME_RESET_DELAY * 0.5)

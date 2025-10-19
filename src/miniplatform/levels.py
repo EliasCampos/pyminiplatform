@@ -1,5 +1,6 @@
 import itertools
 import json
+import logging
 import math
 import operator
 
@@ -199,6 +200,7 @@ class Level(Serializable):
 
     def set_time_stop(self):
         if not (self._time_stop_left or self._time_stop_idle):
+            logging.info("Stopping time ...")
             for factor, value in self._time_stop_factors.items():
                 factor.set(value)
             if self._time_reset_factor:
