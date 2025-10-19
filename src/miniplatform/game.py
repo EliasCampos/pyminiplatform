@@ -1,11 +1,14 @@
+import logging
+import queue
 import threading
 import json
+from functools import cached_property
 
 import pygame
 
 from miniplatform import effects
 from miniplatform.configs import VAR_DIR
-from miniplatform.exceptions import FinishedGameException
+from miniplatform.exceptions import NoLevelError
 from miniplatform.levels import Level
 from miniplatform.serializers import Serializable
 from miniplatform.utils import TimeFactor
@@ -32,7 +35,8 @@ class Game(Serializable):
 
         self._is_saving_game = False
         self._save_game_delay = self.SAVE_GAME_DELAY
-        self._save_game_thread = None
+        self._save_game_queue = queue.Queue()
+        self._save_game_thread = threading.Thread(target=self._save_game_data, args=(self._save_game_queue,))
 
         self._time_to_reset_factor = TimeFactor(
             value=(initial_time if initial_time is not None else self.INITIAL_TIME)
@@ -61,19 +65,23 @@ class Game(Serializable):
                 self._game_reset_time += time
                 self.level.time_acceleration = self._game_reset_time / self.GAME_RESET_DELAY
                 if self._game_reset_time >= self.GAME_RESET_DELAY:
+                    logging.info("Game has been reset. Re-start.")
                     self.reset_game()
             else:
                 self._set_off_game_reset()
 
         if not self.level.is_running:
             if self.level.is_complete:
+                logging.info("Level %s complete, setting up next", self.level.number)
                 try:
                     self.next_level()
-                except FinishedGameException:
-                    self._finish_off()
+                except NoLevelError:
+                    logging.info("No more levels left, finishing the game")
+                    self._setup_game_complete()
                 else:
                     self.reset_level()
             else:
+                logging.info("Restarting the level %s", self.level.number)
                 self.reset_level()
 
     def render(self, screen):
@@ -87,7 +95,7 @@ class Game(Serializable):
         try:
             level_map = self.level_maps[level_number]
         except IndexError:
-            raise FinishedGameException(f"All {level_number} levels complete")
+            raise NoLevelError(f"All {level_number} levels complete")
         else:
             self.level = Level(
                 level_map,
@@ -111,7 +119,10 @@ class Game(Serializable):
 
     def reset_level(self):
         self.level.reset()
-        self.save_game()
+        self.save_game(force=True)
+        if self._is_game_reset:
+            self.level.time_acceleration = self._game_reset_time / self.GAME_RESET_DELAY
+            effects.Sound.WORLD_RESET.unpause()
 
     def _handle_keypress(self, time):
         keys = pygame.key.get_pressed()
@@ -145,36 +156,50 @@ class Game(Serializable):
             "_time_to_reset_factor": self._time_to_reset_factor.value,
         }
 
-    def start_off(self):
-        self.next_level()
-        self.level.reset()
+    def dispatch_session(self):
+        if not self.level:
+            self.next_level()
+            self.level.reset()
+        self._save_game_thread.start()
 
-    def save_game(self):
-        if self._save_game_thread and self._save_game_thread.is_alive():
-            self._save_game_thread.join()
-        if self._save_game_delay <= 0 and not self._is_saving_game:
+    def stop_saving_game(self):
+        if self._save_game_thread.is_alive():
+            self._save_game_queue.put(None)
+
+    def save_game(self, force=False):
+        if force or (self._save_game_delay <= 0 and not self._is_saving_game):
+            logging.debug("Saving game ...")
             self._is_saving_game = True
             data = self.json()
-            file = self.get_saved_game_file()
-            self._save_game_thread = threading.Thread(target=self._save_game_data, args=(data, file))
-            self._save_game_thread.start()
+            self._save_game_queue.put(data)
 
-    def _save_game_data(self, data, file):
-        with threading.Lock():
+    def _save_game_data(self, q):
+        logging.info("Starting automatic game saving")
+        file = self.get_saved_game_file()
+        while True:
+            data = q.get()
+            logging.debug("Got save game item to process.")
+            if data is None:  # stopping saving game procedure
+                logging.info("Finishing save game loop.")
+                break
             with file.open(mode="w") as f:
                 f.write(data)
             self._is_saving_game = False
             self._save_game_delay = self.SAVE_GAME_DELAY
+            q.task_done()
+            logging.debug("Game saved.")
 
-    def _finish_off(self):
+    def _setup_game_complete(self):
         self.level = None
         saved_game_file = self.get_saved_game_file()
         if saved_game_file.exists():
             saved_game_file.unlink()  # delete the save
+        self.stop_saving_game()
         effects.play_soundtrack(name="ending")
 
     def _set_off_game_reset(self):
         if not self._is_game_reset and not (self.level and self.level.is_time_stopped):
+            logging.info("Resetting game ...")
             self._is_game_reset = True
             effects.Sound.WORLD_RESET.play()
             fadeout_time = int(self.GAME_RESET_DELAY * 0.5)
@@ -189,7 +214,6 @@ class Game(Serializable):
         file = cls.get_saved_game_file()
         if not file.exists():
             obj = cls()
-            obj.start_off()
         else:
             with file.open(mode="r") as f:
                 game_data = json.load(f)

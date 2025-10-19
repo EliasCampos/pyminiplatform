@@ -1,4 +1,4 @@
 
 
-class FinishedGameException(Exception):
+class NoLevelError(Exception):
     pass
