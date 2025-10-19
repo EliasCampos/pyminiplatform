@@ -208,7 +208,7 @@ class Level(Serializable):
             effects.Sound.TIME_STOP.play()
 
     def _handle_time_stop(self, time):
-        is_frozen = bool(self._time_stop_freeze)
+        is_frozen_before = bool(self._time_stop_freeze)
         for factor in self._time_stop_factors:
             if factor:
                 factor -= time * self.time_acceleration  # decreasing one by one, not all at once
@@ -221,7 +221,7 @@ class Level(Serializable):
             scale = (self.TIME_STOP_IDLE - self._time_stop_idle.value) / self.TIME_STOP_IDLE
             self.time_stop_bar.width = int(self.BAR_WIDTH * scale)
         config.color_factor = self.color_factor
-        if is_frozen and not self._time_stop_freeze:
+        if not self._time_stop_freeze and is_frozen_before:
             effects.Sound.TIME_STOP.stop()
             effects.Sound.WORLD_RESET.unpause()
 

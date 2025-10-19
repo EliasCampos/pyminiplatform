@@ -34,7 +34,7 @@ def main():
             if event.type == pygame.QUIT:
                 is_running = False
                 logging.info("Stopping game session (quit event)")
-                game_session.finalize_session()
+                game_session.stop_saving_game()
 
         game_session.update_state(frame)
 
@@ -47,4 +47,7 @@ def main():
 def setup_logging():
     level_name = os.getenv("MINI_PLATFORM_LOG_LEVEL", logging.getLevelName(logging.INFO))
     level = logging.getLevelNamesMapping()[level_name]
-    logging.basicConfig(level=level, format='[%(asctime)s][%(threadName)s][%(filename)s][%(levelname)s] %(message)s')
+    logging.basicConfig(
+        level=level,
+        format='[%(asctime)s][%(threadName)s][%(filename)s][%(levelname)s] %(message)s',
+    )

@@ -120,6 +120,9 @@ class Game(Serializable):
     def reset_level(self):
         self.level.reset()
         self.save_game(force=True)
+        if self._is_game_reset:
+            self.level.time_acceleration = self._game_reset_time / self.GAME_RESET_DELAY
+            effects.Sound.WORLD_RESET.unpause()
 
     def _handle_keypress(self, time):
         keys = pygame.key.get_pressed()
@@ -159,8 +162,9 @@ class Game(Serializable):
             self.level.reset()
         self._save_game_thread.start()
 
-    def finalize_session(self):
-        self._save_game_queue.put(None)
+    def stop_saving_game(self):
+        if self._save_game_thread.is_alive():
+            self._save_game_queue.put(None)
 
     def save_game(self, force=False):
         if force or (self._save_game_delay <= 0 and not self._is_saving_game):
@@ -176,7 +180,7 @@ class Game(Serializable):
             data = q.get()
             logging.debug("Got save game item to process.")
             if data is None:  # stopping saving game procedure
-                logging.debug("Finishing save game loop.")
+                logging.info("Finishing save game loop.")
                 break
             with file.open(mode="w") as f:
                 f.write(data)
@@ -190,6 +194,7 @@ class Game(Serializable):
         saved_game_file = self.get_saved_game_file()
         if saved_game_file.exists():
             saved_game_file.unlink()  # delete the save
+        self.stop_saving_game()
         effects.play_soundtrack(name="ending")
 
     def _set_off_game_reset(self):
