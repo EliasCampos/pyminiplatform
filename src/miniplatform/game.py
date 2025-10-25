@@ -34,7 +34,7 @@ class Game(Serializable):
 
         self._is_saving_game = False
         self._save_game_delay = self.SAVE_GAME_DELAY
-        self._save_game_queue = queue.Queue()
+        self._save_game_queue = queue.Queue(maxsize=2)
         self._save_game_thread = threading.Thread(target=self._save_game_data, args=(self._save_game_queue,))
 
         self._time_to_reset_factor = TimeFactor(
@@ -157,7 +157,7 @@ class Game(Serializable):
     def dispatch_session(self):
         if not self.level:
             self.next_level()
-            self.level.reset()
+            self.reset_level()
         else:
             self._reset_level_input_handling()
         self._save_game_thread.start()
