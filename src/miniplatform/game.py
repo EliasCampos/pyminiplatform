@@ -2,11 +2,10 @@ import logging
 import queue
 import threading
 import json
-from functools import cached_property
 
 import pygame
 
-from miniplatform import effects
+from miniplatform import effects, commands
 from miniplatform.configs import VAR_DIR
 from miniplatform.exceptions import NoLevelError
 from miniplatform.levels import Level
@@ -44,6 +43,7 @@ class Game(Serializable):
 
         self._is_game_reset = False
         self._game_reset_time = 0
+        self._input_handler = commands.InputHandler()
 
     def update_state(self, time):
         if not self.level:
@@ -54,7 +54,7 @@ class Game(Serializable):
         else:
             self.save_game()
 
-        self._handle_keypress(time)
+        self._input_handler.handle_input(time)
         self.level.update(time)
 
         if self._time_to_reset_factor:
@@ -123,17 +123,15 @@ class Game(Serializable):
         if self._is_game_reset:
             self.level.time_acceleration = self._game_reset_time / self.GAME_RESET_DELAY
             effects.Sound.WORLD_RESET.unpause()
+        self._reset_level_input_handling()
 
-    def _handle_keypress(self, time):
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT]:
-            self.level.player.move_left(time)
-        if keys[pygame.K_RIGHT]:
-            self.level.player.move_right(time)
-        if keys[pygame.K_UP]:
-            self.level.player.jump(time)
-        if keys[pygame.K_z]:
-            self.level.set_time_stop()
+    def _reset_level_input_handling(self):
+        self._input_handler = commands.InputHandler((
+            (pygame.K_LEFT, commands.MoveLeftCommand(player=self.level.player)),
+            (pygame.K_RIGHT, commands.MoveRightCommand(player=self.level.player)),
+            (pygame.K_UP, commands.JumpCommand(player=self.level.player)),
+            (pygame.K_z, commands.TimeStopCommand(level=self.level)),
+        ))
 
     @classmethod
     def to_internal_value(cls, data):
@@ -160,6 +158,8 @@ class Game(Serializable):
         if not self.level:
             self.next_level()
             self.level.reset()
+        else:
+            self._reset_level_input_handling()
         self._save_game_thread.start()
 
     def stop_saving_game(self):
