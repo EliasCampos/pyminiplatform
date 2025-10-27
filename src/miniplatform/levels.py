@@ -1,4 +1,3 @@
-import itertools
 import json
 import logging
 import math
@@ -8,7 +7,7 @@ import pygame
 
 from miniplatform import effects
 from miniplatform.configs import config, STATIC_DIR, adjust_color
-from miniplatform.entities import Block, Lava, Coin, Player
+from miniplatform.entities import Block, Lava, Coin, Player, Monster
 from miniplatform.serializers import Serializable
 from miniplatform.utils import TimeFactor
 
@@ -25,9 +24,7 @@ class Level(Serializable):
 
     def __init__(self, level_map, number, is_final=False, time_to_reset_factor=None):
         self.player = None
-        self.lavas = ()
-        self.coins = ()
-        self.blocks = ()
+        self._entities = ()
         self.level_map = level_map
         self.number = number
         self.is_final = is_final
@@ -65,7 +62,7 @@ class Level(Serializable):
 
         self.info_font = pygame.font.Font(None, 24)
         self.coins_surface = None
-        self.refresh_coins_text()
+        self.refresh_stats_text()
 
     def reset(self):
         self.player = None
@@ -74,9 +71,7 @@ class Level(Serializable):
             factor.set(0)
         self._time_reset_factor.set(0)
 
-        lavas = []
-        coins = []
-        blocks = []
+        entities = []
 
         for i, line in enumerate(self.level_map):
             for j, el in enumerate(line):
@@ -84,10 +79,10 @@ class Level(Serializable):
                 if el in ("+", "v", "|", "="):
                     direction = pygame.Vector2(el == "=", el in ("v", "|"))
                     lava = Lava(location, direction, is_repeatable=el == "v")
-                    lavas.append(lava)
+                    entities.append(lava)
                 elif el == "o":
                     coin = Coin(location)
-                    coins.append(coin)
+                    entities.append(coin)
                 elif el == "@":
                     self.player = Player(location)
                     w_width, w_height = pygame.display.get_window_size()
@@ -95,38 +90,43 @@ class Level(Serializable):
                     config.offset_y = self.player.rect.y - w_height // 2
                 elif el == "#":
                     block = Block(location)
-                    blocks.append(block)
+                    entities.append(block)
+                elif el in ("m", "M"):
+                    monster = Monster(location, is_auto_target=el == "M")
+                    entities.append(monster)
 
-        self.lavas = tuple(lavas)
-        self.coins = tuple(coins)
-        self.blocks = tuple(blocks)
+        self._entities = tuple(entities)
 
         self.time_stop_bar.width = self.BAR_WIDTH
-        self.refresh_coins_text()
+        self.refresh_stats_text()
+
+    _is_coin = staticmethod(lambda entity: isinstance(entity, Coin))
+    _is_monster = staticmethod(lambda entity: isinstance(entity, Monster))
+    _is_active = operator.attrgetter("is_active")
 
     @property
-    def entities(self):
-        return itertools.chain(
-            self.blocks,
-            self.free_coins,
-            self.lavas,
-        )
+    def coins(self):
+        return filter(self._is_coin, self._entities)
+
+    @property
+    def active_entities(self):
+        return filter(self._is_active, self._entities)
 
     @property
     def free_coins(self):
-        return filter(operator.attrgetter("is_free"), self.coins)
+        return filter(self._is_active, self.coins)
+
+    @staticmethod
+    def _number(sequence):
+        return sum(map(bool, sequence))
 
     @property
-    def coins_number(self):
-        return len(self.coins)
+    def monsters(self):
+        return filter(self._is_monster, self._entities)
 
     @property
-    def collected_coins_number(self):
-        return self.coins_number - sum(map(bool, self.free_coins))
-
-    @property
-    def has_free_coins(self):
-        return any(self.free_coins)
+    def alive_monsters(self):
+        return filter(self._is_active, self.monsters)
 
     def update(self, time):
         self.player.update(time, level=self)
@@ -135,17 +135,17 @@ class Level(Serializable):
         config.offset_x = self.player.rect.x - w_width // 2
         config.offset_y = self.player.rect.y - w_height // 2
 
-        for entity in self.entities:
+        for entity in self.active_entities:
             entity.update(time, level=self)
 
-        if not self.has_free_coins:
+        if not any(self.free_coins) and not any(self.alive_monsters):
             self.player.set_won(level=self)
         elif self.player.is_alive:
             self._handle_time_stop(time)
 
     def redraw(self, screen):
         self.player.render(screen)
-        for entity in self.entities:
+        for entity in self.active_entities:
             entity.render(screen)
         if self._time_reset_factor:
             alpha = int(self._time_reset_factor.value * 255)
@@ -260,12 +260,14 @@ class Level(Serializable):
             )
             screen.blit(time_left_surface, time_left_post)
 
-    @property
-    def coins_text(self):
-        return f"coins: {self.collected_coins_number} / {self.coins_number}"
-
-    def refresh_coins_text(self):
-        coins_text = f"Coins: {self.collected_coins_number} / {self.coins_number}"
+    def refresh_stats_text(self):
+        coins_number = self._number(self.coins)
+        collected_coins_number = coins_number - self._number(self.free_coins)
+        coins_text = f"Coins: {collected_coins_number} / {coins_number}"
+        if any(self.monsters):
+            monsters_number = self._number(self.monsters)
+            defeated_monsters_number = monsters_number - self._number(self.alive_monsters)
+            coins_text = f"{coins_text} | Monsters: {defeated_monsters_number} / {monsters_number}"
         self.coins_surface = self.info_font.render(
             coins_text, True, "black", "white"
         )
@@ -280,9 +282,7 @@ class Level(Serializable):
     def to_internal_value(cls, data):
         data.pop("type")
         player_data = data.pop("player")
-        lavas_data = data.pop("lavas")
-        coins_data = data.pop("coins")
-        blocks_data = data.pop("blocks")
+        entities_data = data.pop("_entities")
 
         level_map = data.pop("level_map")
         number = data.pop("number")
@@ -295,15 +295,22 @@ class Level(Serializable):
         obj = cls(level_map, number, is_final=is_final)
 
         obj.player = Player.to_internal_value(player_data) if player_data else None
-        obj.lavas = tuple([Lava.to_internal_value(data) for data in lavas_data])
-        obj.coins = tuple([Coin.to_internal_value(data) for data in coins_data])
-        obj.blocks = tuple([Block.to_internal_value(data) for data in blocks_data])
+        entity_class_mapping = {
+            "lava": Lava,
+            "coin": Coin,
+            "block": Block,
+            "monster": Monster,
+        }
+        obj._entities = tuple([
+            (entity_class_mapping[data["type"]]).to_internal_value(data)
+            for data in entities_data
+        ])
 
         obj._time_stop_left.set(time_stop_left)
         obj._time_stop_freeze.set(time_stop_freeze)
         obj._time_stop_idle.set(time_stop_idle)
 
-        obj.refresh_coins_text()
+        obj.refresh_stats_text()
 
         return obj
 
@@ -311,9 +318,7 @@ class Level(Serializable):
         return {
             "type": "level",
             "player": self.player.to_representation() if self.player else None,
-            "lavas": [lava.to_representation() for lava in self.lavas],
-            "coins": [coin.to_representation() for coin in self.coins],
-            "blocks": [block.to_representation() for block in self.blocks],
+            "_entities": [entity.to_representation() for entity in self._entities],
             "level_map": self.level_map,
             "number": self.number,
             "is_final": self.is_final,
