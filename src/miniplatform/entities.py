@@ -360,6 +360,7 @@ class Block(Entity):
 class Monster(Entity):
     SCALE = 0.8
     DYING_TIME = 3_000
+    MAX_HEALTH = 100
 
     def __init__(self, location, init_location=None, is_auto_target=False):
         super().__init__(location=location + self.margin)
@@ -367,7 +368,10 @@ class Monster(Entity):
         self.is_auto_target = is_auto_target
         self.direction = random.choice([-1, 1])
         self._dying_time = None
-        self._health = 1
+        self._health = self.MAX_HEALTH
+        resilience = 10 if is_auto_target else 4
+        self._damage = self._health / resilience
+        self._color_shift = 0
 
     def update_state(self, time, level):
         speed = 0.15
@@ -385,8 +389,13 @@ class Monster(Entity):
                 speed *= 3
         elif self._dying_time is not None:
             speed *= self._dying_time / self.DYING_TIME
-        speed_factor = (level.speed_factor if not self.is_auto_target or self._health == 1 else 1)
+        if 0 <= level.speed_factor < 1 and self.is_auto_target and self._health < self.MAX_HEALTH:
+            speed_factor = 1
+        else:
+            speed_factor = level.speed_factor
         step = speed * speed_factor * time
+        if self.is_auto_target:
+            self._color_shift = max(self._color_shift + speed_factor * time * 0.01, math.pi * 100)
         self.rect.move_ip(self.direction * step, 0)
         self._handle_collision(level)
 
@@ -402,7 +411,12 @@ class Monster(Entity):
         return pygame.Rect(self.location.x, self.location.y, w, h)
 
     def render_entity(self, screen):
-        color = (int(255 * self._health), 0, int(155 * self._health)) if self._dying_time is None else (10, 10, 10)
+        pulse = self._color_shift and math.sin(self._color_shift)
+        health = self._health * 0.01
+        r = int((230 + 25 * pulse) * health)
+        g = 0
+        b = int((155 + 45 * pulse) * health)
+        color = (r, g, b) if self._dying_time is None else (10, 10, 10)
         pygame.draw.rect(screen, adjust_color(color), self.sprite)
 
     def _handle_collision(self, level):
@@ -426,9 +440,11 @@ class Monster(Entity):
         location = pygame.Vector2(data.pop("location"))
         init_location = pygame.Vector2(data.pop("init_location"))
         is_auto_target = data.pop("is_auto_target")
+        health = data.pop("_health")
         obj = cls(location=location, init_location=init_location, is_auto_target=is_auto_target)
         is_active = data.pop("is_active")
         obj.is_active = is_active
+        obj._health = health
         return obj
 
     def to_representation(self):
@@ -439,6 +455,7 @@ class Monster(Entity):
             "init_location": [self.init_location.x, self.init_location.y],
             "is_auto_target": self.is_auto_target,
             "is_active": self.is_active,
+            "_health": self._health,
         }
 
     def touch_player(self, player):
@@ -450,7 +467,7 @@ class Monster(Entity):
             )
         ):
             if self._health > 0:
-                self._health -= 0.25
+                self._health -= self._damage
                 Sound.PUNCH.play()
                 if self._health <= 0:
                     self._dying_time = self.DYING_TIME

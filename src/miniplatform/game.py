@@ -58,7 +58,7 @@ class Game(Serializable):
         self.level.update(time)
 
         if self._time_to_reset_factor:
-            if any(self.level.free_coins) and not self.level.is_time_stopped:
+            if not self.level.has_win_condition and not self.level.is_time_stopped:
                 self._time_to_reset_factor -= time
         else:
             if self._is_game_reset and not self.level.is_time_stopped:

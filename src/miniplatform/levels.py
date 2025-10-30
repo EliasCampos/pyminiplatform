@@ -64,6 +64,8 @@ class Level(Serializable):
         self.coins_surface = None
         self.refresh_stats_text()
 
+        self.has_win_condition = False
+
     def reset(self):
         self.player = None
 
@@ -138,7 +140,8 @@ class Level(Serializable):
         for entity in self.active_entities:
             entity.update(time, level=self)
 
-        if not any(self.free_coins) and not any(self.alive_monsters):
+        self.has_win_condition = not any(self.free_coins) and not any(self.alive_monsters)
+        if self.has_win_condition:
             self.player.set_won(level=self)
         elif self.player.is_alive:
             self._handle_time_stop(time)
