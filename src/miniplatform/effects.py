@@ -13,6 +13,7 @@ class Sound(enum.Enum):
     COIN = 3, "coin.wav"
     TIME_STOP = 4, "time_stop.wav"
     WORLD_RESET = 5, "world_reset.wav"
+    PUNCH = 6, "punch.wav"
 
     def __init__(self, channel_id, filename):
         self._channel_id = channel_id

@@ -1,4 +1,5 @@
 import abc
+import contextlib
 import functools
 import logging
 import math
@@ -15,6 +16,7 @@ class Entity(Serializable):
 
     def __init__(self, location):
         self.location = location
+        self.is_active = True
 
     def update(self, time, level):
         self.update_state(time, level)
@@ -145,7 +147,7 @@ class Player(Entity):
             config.color_factor = 1
 
     def _handle_collision(self, level, is_vertical):
-        for entity in level.entities:
+        for entity in level.active_entities:
             if self.collides(entity):
                 if isinstance(entity, Block):
                     self._handle_wall_collision(entity, is_vertical)
@@ -153,6 +155,8 @@ class Player(Entity):
                     self.set_dead()
                 elif isinstance(entity, Coin):
                     entity.set_taken(level)
+                elif isinstance(entity, Monster):
+                    entity.touch_player(player=self)
 
     def _handle_wall_collision(self, block, is_vertical):
         if self.dx != 0 and not is_vertical:
@@ -215,7 +219,7 @@ class Lava(Entity):
         pygame.draw.rect(screen, adjust_color(color), self.sprite)
 
     def _handle_collision(self, level):
-        for entity in level.entities:
+        for entity in level.active_entities:
             if self.collides(entity):
                 if isinstance(entity, Block):
                     if self.is_repeatable:
@@ -266,7 +270,6 @@ class Coin(Entity):
         super().__init__(location)
         self.init_location = init_location or location.copy()
         self.timeline = timeline if timeline is not None else 2 * math.pi * random.random()
-        self.is_free = True
 
     def update_state(self, time, level):
         self.timeline += time * 1e-3 * self.WOBBLE_SPEED * level.speed_factor
@@ -293,7 +296,7 @@ class Coin(Entity):
         )
 
     def _handle_collision(self, level):
-        for entity in level.entities:
+        for entity in level.active_entities:
             if self.collides(entity):
                 if isinstance(entity, Block):
                     if self.rect.y > 0:
@@ -302,8 +305,8 @@ class Coin(Entity):
                         self.rect.top = entity.rect.bottom
 
     def set_taken(self, level):
-        self.is_free = False
-        level.refresh_coins_text()
+        self.is_active = False
+        level.refresh_stats_text()
         Sound.COIN.play()
 
     @classmethod
@@ -323,7 +326,7 @@ class Coin(Entity):
             "location": [self.rect.x, self.rect.y],
             "init_location": [self.init_location.x, self.init_location.y],
             "timeline": self.timeline,
-            "is_free": self.is_free,
+            "is_active": self.is_active,
         }
 
 
@@ -352,3 +355,126 @@ class Block(Entity):
             "type": "block",
             "location": [self.rect.x, self.rect.y],
         }
+
+
+class Monster(Entity):
+    SCALE = 0.8
+    DYING_TIME = 3_000
+    MAX_HEALTH = 100
+
+    def __init__(self, location, init_location=None, is_auto_target=False):
+        super().__init__(location=location + self.margin)
+        self.init_location = init_location or location
+        self.is_auto_target = is_auto_target
+        self.direction = random.choice([-1, 1])
+        self._dying_time = None
+        self._health = self.MAX_HEALTH
+        resilience = 10 if is_auto_target else 4
+        self._damage = self._health / resilience
+        self._color_shift = 0
+
+    def update_state(self, time, level):
+        speed = 0.15
+        if (
+            self.is_auto_target  # a monster will chase the player if they're close to each other
+            and self._dying_time is None
+            and abs((dist_x := level.player.rect.centerx - self.rect.centerx)) < 350
+        ):
+            vertical_dist = level.player.rect.bottom - self.rect.top
+            if 0 < vertical_dist < 50:  # the player is standing next to a monster
+                with contextlib.suppress(ZeroDivisionError):
+                    self.direction = dist_x / abs(dist_x)
+                speed *= 2
+            elif -50 < vertical_dist < 0 and level.player.dy < 0:  # the player bounced from the surface and went up
+                speed *= 3
+        elif self._dying_time is not None:
+            speed *= self._dying_time / self.DYING_TIME
+        if 0 <= level.speed_factor < 1 and self.is_auto_target and self._health < self.MAX_HEALTH:
+            speed_factor = 1
+        else:
+            speed_factor = level.speed_factor
+        step = speed * speed_factor * time
+        if self.is_auto_target:
+            self._color_shift += speed_factor * time * 0.01
+            if self._color_shift > math.pi * 100:  # prevent overflow
+                self._color_shift = 0
+        self.rect.move_ip(self.direction * step, 0)
+        self._handle_collision(level)
+
+        if self._dying_time is not None:
+            self._dying_time -= time * level.speed_factor
+            if self._dying_time <= 0:
+                self.is_active = False
+                level.refresh_stats_text()
+
+
+    def get_rect(self):
+        w, h = (Block.SIZE, Block.SIZE * self.SCALE)
+        return pygame.Rect(self.location.x, self.location.y, w, h)
+
+    def render_entity(self, screen):
+        pulse = self._color_shift and math.sin(self._color_shift)
+        health = self._health * 0.01
+        color = (
+            [int((c + 25 * pulse)) * health for c in (225, 125, 225)]
+            if self._dying_time is None
+            else (15, 10, 10)
+        )
+        pygame.draw.rect(screen, adjust_color(color), self.sprite)
+
+    def _handle_collision(self, level):
+        for entity in level.active_entities:
+            if self.collides(entity):
+                if isinstance(entity, Block):
+                    if self.direction > 0:
+                        self.rect.right = entity.rect.left
+                    elif self.direction < 0:
+                        self.rect.left = entity.rect.right
+                    self.direction *= -1
+
+    @property
+    def margin(self):
+        margin = Block.SIZE * (1 - self.SCALE) * 0.5
+        return pygame.Vector2(margin, margin)
+
+    @classmethod
+    def to_internal_value(cls, data):
+        data.pop("type")
+        location = pygame.Vector2(data.pop("location"))
+        init_location = pygame.Vector2(data.pop("init_location"))
+        is_auto_target = data.pop("is_auto_target")
+        obj = cls(location=location, init_location=init_location, is_auto_target=is_auto_target)
+        for key, value in data.items():
+            setattr(obj, key, value)
+        return obj
+
+    def to_representation(self):
+        location = pygame.Vector2(self.rect.x, self.rect.y) - self.margin
+        return {
+            "type": "monster",
+            "location": [location.x, location.y],
+            "init_location": [self.init_location.x, self.init_location.y],
+            "is_auto_target": self.is_auto_target,
+            "direction": self.direction,
+            "is_active": self.is_active,
+            "_health": self._health,
+        }
+
+    def touch_player(self, player):
+        if (
+            player.dy > 0
+            and any(
+                self.rect.collidepoint(x_pos, player.rect.bottom)
+                for x_pos in (player.rect.left, player.rect.right)
+            )
+        ):
+            if self._health > 0:
+                self._health -= self._damage
+                Sound.PUNCH.play()
+                if self._health <= 0:
+                    self._dying_time = self.DYING_TIME
+            player.rect.bottom = self.rect.top
+            player.dy = -Player.PLAYER_STEP * 25
+            Sound.JUMP.play()
+        elif self._health > 0:
+            player.set_dead()
