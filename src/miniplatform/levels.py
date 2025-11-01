@@ -1,7 +1,6 @@
 import json
 import logging
 import math
-import operator
 
 import pygame
 
@@ -9,7 +8,6 @@ from miniplatform import effects
 from miniplatform.configs import config, STATIC_DIR, adjust_color
 from miniplatform.entities import Block, Lava, Coin, Player, Monster
 from miniplatform.serializers import Serializable
-from miniplatform.utils import TimeFactor
 
 
 class Level(Serializable):
@@ -24,23 +22,26 @@ class Level(Serializable):
 
     def __init__(self, level_map, number, is_final=False, time_to_reset_factor=None):
         self.player = None
-        self._entities = ()
+        self._entities = []
         self.level_map = level_map
         self.number = number
         self.is_final = is_final
 
-        self._time_stop_left = TimeFactor()
-        self._time_stop_freeze = TimeFactor()
-        self._time_stop_idle = TimeFactor()
+        self._time_stop_left = 0
+        self._time_stop_freeze = 0
+        self._time_stop_idle = 0
         self._time_stop_factors = {
-            self._time_stop_left: self.TIME_STOP,
-            self._time_stop_freeze: self.TIME_FREEZE,
-            self._time_stop_idle: self.TIME_STOP_IDLE,
+            '_time_stop_left': self.TIME_STOP,
+            '_time_stop_freeze': self.TIME_FREEZE,
+            '_time_stop_idle': self.TIME_STOP_IDLE,
         }
 
         w_width, w_height = pygame.display.get_window_size()
 
-        self._time_reset_factor = TimeFactor()
+        # external factors:
+        self.game_time_to_reset_factor = time_to_reset_factor
+        self.game_time_reset_factor = 0
+
         self._time_reset_screen = pygame.Surface((w_width, w_height))
         self._time_reset_screen.fill((255, 255, 255))
         self._time_reset_screen.set_alpha(0)
@@ -58,22 +59,35 @@ class Level(Serializable):
             bar_size,
         )
 
-        self._game_time_to_reset_factor = time_to_reset_factor
+        # pre-update state:
+        self.active_entities = []
+        self.coins = []
+        self.free_coins = []
+        self.monsters = []
+        self.alive_monsters = []
+
+        # post-update state:
+        self.is_running = True
+        self.is_complete = False
+        self.is_time_stopped = False
+
+        self.speed_factor = 1
+        self.time_acceleration = 1
+
+        self.has_win_condition = False
 
         self.info_font = pygame.font.Font(None, 24)
         self.coins_surface = None
         self.refresh_stats_text()
 
-        self.has_win_condition = False
-
     def reset(self):
         self.player = None
 
         for factor in self._time_stop_factors:
-            factor.set(0)
-        self._time_reset_factor.set(0)
+            setattr(self, factor, 0)
+        self.game_time_reset_factor = 0
 
-        entities = []
+        self._entities.clear()
 
         for i, line in enumerate(self.level_map):
             for j, el in enumerate(line):
@@ -81,10 +95,10 @@ class Level(Serializable):
                 if el in ("+", "v", "|", "="):
                     direction = pygame.Vector2(el == "=", el in ("v", "|"))
                     lava = Lava(location, direction, is_repeatable=el == "v")
-                    entities.append(lava)
+                    self._entities.append(lava)
                 elif el == "o":
                     coin = Coin(location)
-                    entities.append(coin)
+                    self._entities.append(coin)
                 elif el == "@":
                     self.player = Player(location)
                     w_width, w_height = pygame.display.get_window_size()
@@ -92,45 +106,20 @@ class Level(Serializable):
                     config.offset_y = self.player.rect.y - w_height // 2
                 elif el == "#":
                     block = Block(location)
-                    entities.append(block)
+                    self._entities.append(block)
                 elif el in ("m", "M"):
                     monster = Monster(location, is_auto_target=el == "M")
-                    entities.append(monster)
+                    self._entities.append(monster)
 
-        self._entities = tuple(entities)
+        self._pre_update_setup()
+        self._post_update_setup()
 
         self.time_stop_bar.width = self.BAR_WIDTH
         self.refresh_stats_text()
 
-    _is_coin = staticmethod(lambda entity: isinstance(entity, Coin))
-    _is_monster = staticmethod(lambda entity: isinstance(entity, Monster))
-    _is_active = operator.attrgetter("is_active")
-
-    @property
-    def coins(self):
-        return filter(self._is_coin, self._entities)
-
-    @property
-    def active_entities(self):
-        return filter(self._is_active, self._entities)
-
-    @property
-    def free_coins(self):
-        return filter(self._is_active, self.coins)
-
-    @staticmethod
-    def _number(sequence):
-        return sum(map(bool, sequence))
-
-    @property
-    def monsters(self):
-        return filter(self._is_monster, self._entities)
-
-    @property
-    def alive_monsters(self):
-        return filter(self._is_active, self.monsters)
-
     def update(self, time):
+        self._pre_update_setup()
+
         self.player.update(time, level=self)
 
         w_width, w_height = pygame.display.get_window_size()
@@ -146,93 +135,107 @@ class Level(Serializable):
         elif self.player.is_alive:
             self._handle_time_stop(time)
 
+        self._post_update_setup()
+
     def redraw(self, screen):
         self.player.render(screen)
         for entity in self.active_entities:
             entity.render(screen)
-        if self._time_reset_factor:
-            alpha = int(self._time_reset_factor.value * 255)
+        if self.game_time_reset_factor > 0:
+            alpha = int(self.game_time_reset_factor * 255)
             self._time_reset_screen.set_alpha(alpha)
             screen.blit(self._time_reset_screen, (0, 0))
         self._draw_infographics(screen)
 
-    @property
-    def is_running(self):
-        return not (self.player.is_dead or self.player.is_winner)
+    def _pre_update_setup(self):
+        for l in (
+            self.active_entities,
+            self.coins,
+            self.free_coins,
+            self.monsters,
+            self.alive_monsters,
+        ):
+            l.clear()
 
-    @property
-    def is_complete(self):
-        return self.player.is_winner
+        for entity in self._entities:
+            if entity.is_active:
+                self.active_entities.append(entity)
 
-    @property
-    def is_time_stopped(self):
-        return any([self._time_stop_left, self._time_stop_freeze])
+            if isinstance(entity, Coin):
+                self.coins.append(entity)
+                if entity.is_active:
+                    self.free_coins.append(entity)
+            elif isinstance(entity, Monster):
+                self.monsters.append(entity)
+                if entity.is_active:
+                    self.alive_monsters.append(entity)
 
-    @property
-    def speed_factor(self):
-        if self._time_stop_left:
-            return 0
+    def _post_update_setup(self):
+        self.is_running = not (self.player.is_dead or self.player.is_winner)
+        self.is_complete = self.player.is_winner
+        self.is_time_stopped = any(value > 0 for value in (self._time_stop_left, self._time_stop_freeze))
 
-        if self._time_stop_freeze:
-            return (self.TIME_FREEZE - self._time_stop_freeze.value) / self.TIME_FREEZE
+        if self.game_time_reset_factor <= 0:
+            time_acceleration = 1
+        else:
+            t = self.game_time_reset_factor
+            time_acceleration = 1 + self.TIME_ACCELERATION_SCALE * ((1 / (1 + math.exp(-t))) - 0.5)
+        self.time_acceleration = time_acceleration
 
-        if self._time_reset_factor:
-            return self.time_acceleration
-
-        return 1
-
-    @property
-    def time_acceleration(self):
-        if not self._time_reset_factor:
-            return 1
-
-        t = self._time_reset_factor.value
-        return 1 + self.TIME_ACCELERATION_SCALE * ((1 / (1 + math.exp(-t))) - 0.5)
-
-    @time_acceleration.setter
-    def time_acceleration(self, value):
-        self._time_reset_factor.set(value)
+        if self._time_stop_left > 0:
+            speed_factor = 0
+        elif self._time_stop_freeze > 0:
+            speed_factor = (self.TIME_FREEZE - self._time_stop_freeze) / self.TIME_FREEZE
+        elif self.game_time_reset_factor > 0:
+            speed_factor = self.time_acceleration
+        else:
+            speed_factor = 1
+        self.speed_factor = speed_factor
 
     def set_time_stop(self):
-        if not (self._time_stop_left or self._time_stop_idle):
+        if all(value <= 0 for value in (self._time_stop_left, self._time_stop_freeze, self._time_stop_idle)):
             logging.info("Stopping time ...")
             for factor, value in self._time_stop_factors.items():
-                factor.set(value)
-            if self._time_reset_factor:
+                setattr(self, factor, value)
+            if self.game_time_reset_factor > 0:
                 effects.Sound.WORLD_RESET.pause()
             effects.Sound.TIME_STOP.play()
 
     def _handle_time_stop(self, time):
-        is_frozen_before = bool(self._time_stop_freeze)
+        is_frozen_before = self._time_stop_freeze > 0
         for factor in self._time_stop_factors:
-            if factor:
-                factor -= time * self.time_acceleration  # decreasing one by one, not all at once
+            factor_value = getattr(self, factor)
+            if factor_value > 0:
+                factor_value -= time * self.time_acceleration  # decreasing one by one, not all at once
+                setattr(self, factor, factor_value)
                 break
-        if self._time_stop_left or self._time_stop_freeze:
-            charge = sum([factor.value for factor in (self._time_stop_left, self._time_stop_freeze)])
+
+        stop_factor_values = (self._time_stop_left, self._time_stop_freeze)
+        if any(value > 0 for value in stop_factor_values):
+            charge = sum(stop_factor_values)
             total_charge = sum((self.TIME_STOP, self.TIME_FREEZE))
             self.time_stop_bar.width = int(self.BAR_WIDTH * (charge / total_charge))
-        elif self._time_stop_idle:
-            scale = (self.TIME_STOP_IDLE - self._time_stop_idle.value) / self.TIME_STOP_IDLE
+        elif self._time_stop_idle > 0:
+            scale = (self.TIME_STOP_IDLE - self._time_stop_idle) / self.TIME_STOP_IDLE
             self.time_stop_bar.width = int(self.BAR_WIDTH * scale)
 
-        if self._time_stop_left:
+        if self._time_stop_left > 0:
             color_factor = 0
-        elif self._time_stop_freeze:
-            color_factor =  1 - (self._time_stop_freeze.value / self.TIME_FREEZE)
+        elif self._time_stop_freeze > 0:
+            color_factor =  1 - (self._time_stop_freeze / self.TIME_FREEZE)
         else:
             color_factor = 1
         config.color_factor = color_factor
 
-        if not self._time_stop_freeze and is_frozen_before:
+        if self._time_stop_freeze <= 0 and is_frozen_before:
             effects.Sound.TIME_STOP.stop()
             effects.Sound.WORLD_RESET.unpause()
 
     def _draw_infographics(self, screen):
         pygame.draw.rect(screen, "gray", self.time_stop_back_bar)
-        if self._time_stop_left or self._time_stop_freeze:
+        if any(value > 0 for value in (self._time_stop_left, self._time_stop_freeze)):
             time_left_text_color = adjust_color((0, 255, 0))
-        elif self._time_stop_idle:
+        elif self._time_stop_idle > 0:
             time_left_text_color = (0, 125, 0)
         else:
             time_left_text_color = (0, 255, 0)
@@ -242,10 +245,10 @@ class Level(Serializable):
         coins_text_pos = (self.time_stop_back_bar.left, self.time_stop_back_bar.bottom + coins_text_margin)
         screen.blit(self.coins_surface, coins_text_pos)
 
-        if self._game_time_to_reset_factor is not None:
-            time_left = self._game_time_to_reset_factor.value
+        if self.game_time_to_reset_factor is not None:
+            time_left = self.game_time_to_reset_factor
             if self.is_time_stopped:
-                time_left_text = f"ZA WARUDO!"
+                time_left_text = "ZA WARUDO!"
                 time_left_text_color = "goldenrod"
             elif time_left > 0:
                 time_left_text = f"Time left: {time_left // 1000}"
@@ -264,12 +267,12 @@ class Level(Serializable):
             screen.blit(time_left_surface, time_left_post)
 
     def refresh_stats_text(self):
-        coins_number = self._number(self.coins)
-        collected_coins_number = coins_number - self._number(self.free_coins)
+        coins_number = len(self.coins)
+        collected_coins_number = coins_number - len(self.free_coins)
         coins_text = f"Coins: {collected_coins_number} / {coins_number}"
         if any(self.monsters):
-            monsters_number = self._number(self.monsters)
-            defeated_monsters_number = monsters_number - self._number(self.alive_monsters)
+            monsters_number = len(self.monsters)
+            defeated_monsters_number = monsters_number - len(self.alive_monsters)
             coins_text = f"{coins_text} | Monsters: {defeated_monsters_number} / {monsters_number}"
         self.coins_surface = self.info_font.render(
             coins_text, True, "black", "white"
@@ -304,14 +307,17 @@ class Level(Serializable):
             "block": Block,
             "monster": Monster,
         }
-        obj._entities = tuple([
+        obj._entities = [
             (entity_class_mapping[data["type"]]).to_internal_value(data)
             for data in entities_data
-        ])
+        ]
 
-        obj._time_stop_left.set(time_stop_left)
-        obj._time_stop_freeze.set(time_stop_freeze)
-        obj._time_stop_idle.set(time_stop_idle)
+        obj._time_stop_left = time_stop_left
+        obj._time_stop_freeze = time_stop_freeze
+        obj._time_stop_idle = time_stop_idle
+
+        obj._pre_update_setup()
+        obj._post_update_setup()
 
         obj.refresh_stats_text()
 
@@ -325,7 +331,7 @@ class Level(Serializable):
             "level_map": self.level_map,
             "number": self.number,
             "is_final": self.is_final,
-            "_time_stop_left": self._time_stop_left.value,
-            "_time_stop_freeze": self._time_stop_freeze.value,
-            "_time_stop_idle": self._time_stop_idle.value,
+            "_time_stop_left": self._time_stop_left,
+            "_time_stop_freeze": self._time_stop_freeze,
+            "_time_stop_idle": self._time_stop_idle,
         }

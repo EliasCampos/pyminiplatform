@@ -10,7 +10,6 @@ from miniplatform.configs import VAR_DIR
 from miniplatform.exceptions import NoLevelError
 from miniplatform.levels import Level
 from miniplatform.serializers import Serializable
-from miniplatform.utils import TimeFactor
 
 
 class Game(Serializable):
@@ -37,9 +36,7 @@ class Game(Serializable):
         self._save_game_queue = queue.Queue(maxsize=2)
         self._save_game_thread = threading.Thread(target=self._save_game_data, args=(self._save_game_queue,))
 
-        self._time_to_reset_factor = TimeFactor(
-            value=(initial_time if initial_time is not None else self.INITIAL_TIME)
-        )
+        self._time_to_reset_factor = initial_time if initial_time is not None else self.INITIAL_TIME
 
         self._is_game_reset = False
         self._game_reset_time = 0
@@ -57,13 +54,14 @@ class Game(Serializable):
         self._input_handler.handle_input(time)
         self.level.update(time)
 
-        if self._time_to_reset_factor:
+        if self._time_to_reset_factor > 0:
             if not self.level.has_win_condition and not self.level.is_time_stopped:
                 self._time_to_reset_factor -= time
+                self.level.game_time_to_reset_factor = self._time_to_reset_factor
         else:
             if self._is_game_reset and not self.level.is_time_stopped:
                 self._game_reset_time += time
-                self.level.time_acceleration = self._game_reset_time / self.GAME_RESET_DELAY
+                self.level.game_time_reset_factor = self._game_reset_time / self.GAME_RESET_DELAY
                 if self._game_reset_time >= self.GAME_RESET_DELAY:
                     logging.info("Game has been reset. Re-start.")
                     self.reset_game()
@@ -110,7 +108,7 @@ class Game(Serializable):
         self._is_game_reset = False
         self._game_reset_time = 0
         self.level = None
-        self._time_to_reset_factor.set(self.INITIAL_TIME)
+        self._time_to_reset_factor = self.INITIAL_TIME
         self.next_level()
         self.reset_level()
 
@@ -121,7 +119,7 @@ class Game(Serializable):
         self.level.reset()
         self.save_game(force=True)
         if self._is_game_reset:
-            self.level.time_acceleration = self._game_reset_time / self.GAME_RESET_DELAY
+            self.level.game_time_reset_factor = self._game_reset_time / self.GAME_RESET_DELAY
             effects.Sound.WORLD_RESET.unpause()
         self._reset_level_input_handling()
 
@@ -142,7 +140,7 @@ class Game(Serializable):
 
         obj = cls(level_maps=level_maps, initial_time=time_to_reset)
         obj.level = Level.to_internal_value(level_data)
-        obj.level._game_time_to_reset_factor = obj._time_to_reset_factor
+        obj.level.game_time_to_reset_factor = obj._time_to_reset_factor
 
         return obj
 
@@ -151,7 +149,7 @@ class Game(Serializable):
             "type": "game",
             "level_maps": self.level_maps,
             "level": self.level.to_representation() if self.level else None,
-            "_time_to_reset_factor": self._time_to_reset_factor.value,
+            "_time_to_reset_factor": self._time_to_reset_factor,
         }
 
     def dispatch_session(self):
