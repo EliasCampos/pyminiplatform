@@ -443,11 +443,9 @@ class Monster(Entity):
         location = pygame.Vector2(data.pop("location"))
         init_location = pygame.Vector2(data.pop("init_location"))
         is_auto_target = data.pop("is_auto_target")
-        health = data.pop("_health")
         obj = cls(location=location, init_location=init_location, is_auto_target=is_auto_target)
-        is_active = data.pop("is_active")
-        obj.is_active = is_active
-        obj._health = health
+        for key, value in data.items():
+            setattr(obj, key, value)
         return obj
 
     def to_representation(self):
@@ -457,6 +455,7 @@ class Monster(Entity):
             "location": [location.x, location.y],
             "init_location": [self.init_location.x, self.init_location.y],
             "is_auto_target": self.is_auto_target,
+            "direction": self.direction,
             "is_active": self.is_active,
             "_health": self._health,
         }
