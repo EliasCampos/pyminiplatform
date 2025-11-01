@@ -200,6 +200,8 @@ class Lava(Entity):
     SCALE = 0.9
 
     def __init__(self, location, direction, is_repeatable, init_location=None):
+        margin = Block.SIZE * (1 - self.SCALE) * 0.5
+        self.margin = pygame.Vector2(margin, margin)
         super().__init__(location=location + self.margin)
         self.init_location = init_location or location
         self.direction = direction
@@ -236,11 +238,6 @@ class Lava(Entity):
                         elif self.direction.y < 0:
                             self.rect.top = entity.rect.bottom
                         self.direction.rotate_ip(180)
-
-    @property
-    def margin(self):
-        margin = Block.SIZE * (1 - self.SCALE) * 0.5
-        return pygame.Vector2(margin, margin)
 
     @classmethod
     def to_internal_value(cls, data):
@@ -364,6 +361,8 @@ class Monster(Entity):
     MAX_HEALTH = 100
 
     def __init__(self, location, init_location=None, is_auto_target=False):
+        margin = Block.SIZE * (1 - self.SCALE) * 0.5
+        self.margin = pygame.Vector2(margin, margin)
         super().__init__(location=location + self.margin)
         self.init_location = init_location or location
         self.is_auto_target = is_auto_target
@@ -432,11 +431,6 @@ class Monster(Entity):
                     elif self.direction < 0:
                         self.rect.left = entity.rect.right
                     self.direction *= -1
-
-    @property
-    def margin(self):
-        margin = Block.SIZE * (1 - self.SCALE) * 0.5
-        return pygame.Vector2(margin, margin)
 
     @classmethod
     def to_internal_value(cls, data):
