@@ -38,7 +38,10 @@ class Level(Serializable):
 
         w_width, w_height = pygame.display.get_window_size()
 
-        self._time_reset_factor = 0
+        # external factors:
+        self.game_time_to_reset_factor = time_to_reset_factor
+        self.game_time_reset_factor = 0
+
         self._time_reset_screen = pygame.Surface((w_width, w_height))
         self._time_reset_screen.fill((255, 255, 255))
         self._time_reset_screen.set_alpha(0)
@@ -55,8 +58,6 @@ class Level(Serializable):
             (w_width * info_margin + bar_margin, w_height * info_margin + bar_margin),
             bar_size,
         )
-
-        self._game_time_to_reset_factor = time_to_reset_factor
 
         # pre-update state:
         self.active_entities = []
@@ -84,7 +85,7 @@ class Level(Serializable):
 
         for factor in self._time_stop_factors:
             setattr(self, factor, 0)
-        self._time_reset_factor = 0
+        self.game_time_reset_factor = 0
 
         self._entities.clear()
 
@@ -140,8 +141,8 @@ class Level(Serializable):
         self.player.render(screen)
         for entity in self.active_entities:
             entity.render(screen)
-        if self._time_reset_factor > 0:
-            alpha = int(self._time_reset_factor * 255)
+        if self.game_time_reset_factor > 0:
+            alpha = int(self.game_time_reset_factor * 255)
             self._time_reset_screen.set_alpha(alpha)
             screen.blit(self._time_reset_screen, (0, 0))
         self._draw_infographics(screen)
@@ -174,10 +175,10 @@ class Level(Serializable):
         self.is_complete = self.player.is_winner
         self.is_time_stopped = any(value > 0 for value in (self._time_stop_left, self._time_stop_freeze))
 
-        if self._time_reset_factor <= 0:
+        if self.game_time_reset_factor <= 0:
             time_acceleration = 1
         else:
-            t = self._time_reset_factor
+            t = self.game_time_reset_factor
             time_acceleration = 1 + self.TIME_ACCELERATION_SCALE * ((1 / (1 + math.exp(-t))) - 0.5)
         self.time_acceleration = time_acceleration
 
@@ -185,7 +186,7 @@ class Level(Serializable):
             speed_factor = 0
         elif self._time_stop_freeze > 0:
             speed_factor = (self.TIME_FREEZE - self._time_stop_freeze) / self.TIME_FREEZE
-        elif self._time_reset_factor > 0:
+        elif self.game_time_reset_factor > 0:
             speed_factor = self.time_acceleration
         else:
             speed_factor = 1
@@ -196,7 +197,7 @@ class Level(Serializable):
             logging.info("Stopping time ...")
             for factor, value in self._time_stop_factors.items():
                 setattr(self, factor, value)
-            if self._time_reset_factor > 0:
+            if self.game_time_reset_factor > 0:
                 effects.Sound.WORLD_RESET.pause()
             effects.Sound.TIME_STOP.play()
 
@@ -244,8 +245,8 @@ class Level(Serializable):
         coins_text_pos = (self.time_stop_back_bar.left, self.time_stop_back_bar.bottom + coins_text_margin)
         screen.blit(self.coins_surface, coins_text_pos)
 
-        if self._game_time_to_reset_factor is not None:
-            time_left = self._game_time_to_reset_factor
+        if self.game_time_to_reset_factor is not None:
+            time_left = self.game_time_to_reset_factor
             if self.is_time_stopped:
                 time_left_text = f"ZA WARUDO!"
                 time_left_text_color = "goldenrod"

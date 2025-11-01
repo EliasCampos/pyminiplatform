@@ -57,11 +57,11 @@ class Game(Serializable):
         if self._time_to_reset_factor > 0:
             if not self.level.has_win_condition and not self.level.is_time_stopped:
                 self._time_to_reset_factor -= time
-                self.level._game_time_to_reset_factor = self._time_to_reset_factor
+                self.level.game_time_to_reset_factor = self._time_to_reset_factor
         else:
             if self._is_game_reset and not self.level.is_time_stopped:
                 self._game_reset_time += time
-                self.level._time_reset_factor = self._game_reset_time / self.GAME_RESET_DELAY
+                self.level.game_time_reset_factor = self._game_reset_time / self.GAME_RESET_DELAY
                 if self._game_reset_time >= self.GAME_RESET_DELAY:
                     logging.info("Game has been reset. Re-start.")
                     self.reset_game()
@@ -119,7 +119,7 @@ class Game(Serializable):
         self.level.reset()
         self.save_game(force=True)
         if self._is_game_reset:
-            self.level._time_reset_factor = self._game_reset_time / self.GAME_RESET_DELAY
+            self.level.game_time_reset_factor = self._game_reset_time / self.GAME_RESET_DELAY
             effects.Sound.WORLD_RESET.unpause()
         self._reset_level_input_handling()
 
@@ -140,7 +140,7 @@ class Game(Serializable):
 
         obj = cls(level_maps=level_maps, initial_time=time_to_reset)
         obj.level = Level.to_internal_value(level_data)
-        obj.level._game_time_to_reset_factor = obj._time_to_reset_factor
+        obj.level.game_time_to_reset_factor = obj._time_to_reset_factor
 
         return obj
 
