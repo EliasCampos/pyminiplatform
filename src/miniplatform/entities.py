@@ -376,16 +376,16 @@ class Monster(Entity):
     def update_state(self, time, level):
         speed = 0.15
         if (
-            self.is_auto_target
+            self.is_auto_target  # a monster will chase the player if they're close to each other
             and self._dying_time is None
             and abs((dist_x := level.player.rect.centerx - self.rect.centerx)) < 350
         ):
             vertical_dist = level.player.rect.bottom - self.rect.top
-            if 0 < vertical_dist < 50:
+            if 0 < vertical_dist < 50:  # the player is standing next to a monster
                 with contextlib.suppress(ZeroDivisionError):
                     self.direction = dist_x / abs(dist_x)
                 speed *= 2
-            elif -50 < vertical_dist < 0 and level.player.dy < 0:
+            elif -50 < vertical_dist < 0 and level.player.dy < 0:  # the player bounced from the surface and went up
                 speed *= 3
         elif self._dying_time is not None:
             speed *= self._dying_time / self.DYING_TIME
@@ -395,7 +395,9 @@ class Monster(Entity):
             speed_factor = level.speed_factor
         step = speed * speed_factor * time
         if self.is_auto_target:
-            self._color_shift = max(self._color_shift + speed_factor * time * 0.01, math.pi * 100)
+            self._color_shift += speed_factor * time * 0.01
+            if self._color_shift > math.pi * 100:  # prevent overflow
+                self._color_shift = 0
         self.rect.move_ip(self.direction * step, 0)
         self._handle_collision(level)
 
@@ -413,10 +415,11 @@ class Monster(Entity):
     def render_entity(self, screen):
         pulse = self._color_shift and math.sin(self._color_shift)
         health = self._health * 0.01
-        r = int((230 + 25 * pulse) * health)
-        g = 0
-        b = int((155 + 45 * pulse) * health)
-        color = (r, g, b) if self._dying_time is None else (10, 10, 10)
+        color = (
+            [int((c + 25 * pulse)) * health for c in (225, 125, 225)]
+            if self._dying_time is None
+            else (15, 10, 10)
+        )
         pygame.draw.rect(screen, adjust_color(color), self.sprite)
 
     def _handle_collision(self, level):

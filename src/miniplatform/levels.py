@@ -182,14 +182,6 @@ class Level(Serializable):
         return 1
 
     @property
-    def color_factor(self):
-        if self._time_stop_left:
-            return 0
-        if self._time_stop_freeze:
-            return 1 - (self._time_stop_freeze.value / self.TIME_FREEZE)
-        return 1
-
-    @property
     def time_acceleration(self):
         if not self._time_reset_factor:
             return 1
@@ -223,7 +215,15 @@ class Level(Serializable):
         elif self._time_stop_idle:
             scale = (self.TIME_STOP_IDLE - self._time_stop_idle.value) / self.TIME_STOP_IDLE
             self.time_stop_bar.width = int(self.BAR_WIDTH * scale)
-        config.color_factor = self.color_factor
+
+        if self._time_stop_left:
+            color_factor = 0
+        elif self._time_stop_freeze:
+            color_factor =  1 - (self._time_stop_freeze.value / self.TIME_FREEZE)
+        else:
+            color_factor = 1
+        config.color_factor = color_factor
+
         if not self._time_stop_freeze and is_frozen_before:
             effects.Sound.TIME_STOP.stop()
             effects.Sound.WORLD_RESET.unpause()
