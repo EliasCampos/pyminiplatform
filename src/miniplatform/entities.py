@@ -68,6 +68,11 @@ class Player(Entity):
         self._is_dead = False
         self._finalization_time = 3000
 
+        # Post-update state:
+        self.is_alive = True
+        self.is_dead = False
+        self.is_winner = False
+
     def update_state(self, time, level):
         if not self.is_on_ground:
             gravity = 0.0005
@@ -86,6 +91,8 @@ class Player(Entity):
         if self._is_dead or self._is_won:
             self._finalization_time -= time * level.time_acceleration
         self.dx = 0
+
+        self._post_update_state()
 
     def get_rect(self):
         return pygame.Rect(
@@ -118,24 +125,12 @@ class Player(Entity):
     def set_position(self, position):
         self.location = position
 
-    @property
-    def is_alive(self):
-        return not self._is_dead
-
-    @property
-    def is_dead(self):
-        return not self._is_won and self._is_dead and self._finalization_time <= 0
-
     def set_dead(self):
         if not (self._is_won or self._is_dead):
             logging.info("Player has died.")
             self._is_dead = True
             Sound.FAIL.play()
             config.color_factor = 1
-
-    @property
-    def is_winner(self):
-        return not self._is_dead and self._is_won and self._finalization_time <= 0
 
     def set_won(self, level):
         if not (self._is_won or self._is_dead):
@@ -145,6 +140,11 @@ class Player(Entity):
             if level.is_final:
                 pygame.mixer.music.fadeout(self._finalization_time)
             config.color_factor = 1
+
+    def _post_update_state(self):
+        self.is_alive = not self._is_dead
+        self.is_dead = not self._is_won and self._is_dead and self._finalization_time <= 0
+        self.is_winner = not self._is_dead and self._is_won and self._finalization_time <= 0
 
     def _handle_collision(self, level, is_vertical):
         for entity in level.active_entities:
@@ -180,6 +180,7 @@ class Player(Entity):
         obj = cls(location=location)
         for key, value in data.items():
             setattr(obj, key, value)
+        obj._post_update_state()
         return obj
 
     def to_representation(self):

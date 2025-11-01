@@ -1,7 +1,6 @@
 import json
 import logging
 import math
-import operator
 
 import pygame
 
@@ -24,7 +23,7 @@ class Level(Serializable):
 
     def __init__(self, level_map, number, is_final=False, time_to_reset_factor=None):
         self.player = None
-        self._entities = ()
+        self._entities = []
         self.level_map = level_map
         self.number = number
         self.is_final = is_final
@@ -60,11 +59,23 @@ class Level(Serializable):
 
         self._game_time_to_reset_factor = time_to_reset_factor
 
+        # pre-update state:
+        self.active_entities = []
+        self.coins = []
+        self.free_coins = []
+        self.monsters = []
+        self.alive_monsters = []
+
+        # post-update state:
+        self.is_running = True
+        self.is_complete = False
+        self.is_time_stopped = False
+
+        self.has_win_condition = False
+
         self.info_font = pygame.font.Font(None, 24)
         self.coins_surface = None
         self.refresh_stats_text()
-
-        self.has_win_condition = False
 
     def reset(self):
         self.player = None
@@ -73,7 +84,7 @@ class Level(Serializable):
             factor.set(0)
         self._time_reset_factor.set(0)
 
-        entities = []
+        self._entities.clear()
 
         for i, line in enumerate(self.level_map):
             for j, el in enumerate(line):
@@ -81,10 +92,10 @@ class Level(Serializable):
                 if el in ("+", "v", "|", "="):
                     direction = pygame.Vector2(el == "=", el in ("v", "|"))
                     lava = Lava(location, direction, is_repeatable=el == "v")
-                    entities.append(lava)
+                    self._entities.append(lava)
                 elif el == "o":
                     coin = Coin(location)
-                    entities.append(coin)
+                    self._entities.append(coin)
                 elif el == "@":
                     self.player = Player(location)
                     w_width, w_height = pygame.display.get_window_size()
@@ -92,45 +103,20 @@ class Level(Serializable):
                     config.offset_y = self.player.rect.y - w_height // 2
                 elif el == "#":
                     block = Block(location)
-                    entities.append(block)
+                    self._entities.append(block)
                 elif el in ("m", "M"):
                     monster = Monster(location, is_auto_target=el == "M")
-                    entities.append(monster)
+                    self._entities.append(monster)
 
-        self._entities = tuple(entities)
+        self._pre_update_setup()
+        self._post_update_setup()
 
         self.time_stop_bar.width = self.BAR_WIDTH
         self.refresh_stats_text()
 
-    _is_coin = staticmethod(lambda entity: isinstance(entity, Coin))
-    _is_monster = staticmethod(lambda entity: isinstance(entity, Monster))
-    _is_active = operator.attrgetter("is_active")
-
-    @property
-    def coins(self):
-        return filter(self._is_coin, self._entities)
-
-    @property
-    def active_entities(self):
-        return filter(self._is_active, self._entities)
-
-    @property
-    def free_coins(self):
-        return filter(self._is_active, self.coins)
-
-    @staticmethod
-    def _number(sequence):
-        return sum(map(bool, sequence))
-
-    @property
-    def monsters(self):
-        return filter(self._is_monster, self._entities)
-
-    @property
-    def alive_monsters(self):
-        return filter(self._is_active, self.monsters)
-
     def update(self, time):
+        self._pre_update_setup()
+
         self.player.update(time, level=self)
 
         w_width, w_height = pygame.display.get_window_size()
@@ -146,6 +132,8 @@ class Level(Serializable):
         elif self.player.is_alive:
             self._handle_time_stop(time)
 
+        self._post_update_setup()
+
     def redraw(self, screen):
         self.player.render(screen)
         for entity in self.active_entities:
@@ -156,17 +144,34 @@ class Level(Serializable):
             screen.blit(self._time_reset_screen, (0, 0))
         self._draw_infographics(screen)
 
-    @property
-    def is_running(self):
-        return not (self.player.is_dead or self.player.is_winner)
 
-    @property
-    def is_complete(self):
-        return self.player.is_winner
+    def _pre_update_setup(self):
+        for l in (
+            self.active_entities,
+            self.coins,
+            self.free_coins,
+            self.monsters,
+            self.alive_monsters,
+        ):
+            l.clear()
 
-    @property
-    def is_time_stopped(self):
-        return any([self._time_stop_left, self._time_stop_freeze])
+        for entity in self._entities:
+            if entity.is_active:
+                self.active_entities.append(entity)
+
+            if isinstance(entity, Coin):
+                self.coins.append(entity)
+                if entity.is_active:
+                    self.free_coins.append(entity)
+            elif isinstance(entity, Monster):
+                self.monsters.append(entity)
+                if entity.is_active:
+                    self.alive_monsters.append(entity)
+
+    def _post_update_setup(self):
+        self.is_running = not (self.player.is_dead or self.player.is_winner)
+        self.is_complete = self.player.is_winner
+        self.is_time_stopped = any([self._time_stop_left, self._time_stop_freeze])
 
     @property
     def speed_factor(self):
@@ -264,12 +269,12 @@ class Level(Serializable):
             screen.blit(time_left_surface, time_left_post)
 
     def refresh_stats_text(self):
-        coins_number = self._number(self.coins)
-        collected_coins_number = coins_number - self._number(self.free_coins)
+        coins_number = len(self.coins)
+        collected_coins_number = coins_number - len(self.free_coins)
         coins_text = f"Coins: {collected_coins_number} / {coins_number}"
         if any(self.monsters):
-            monsters_number = self._number(self.monsters)
-            defeated_monsters_number = monsters_number - self._number(self.alive_monsters)
+            monsters_number = len(self.monsters)
+            defeated_monsters_number = monsters_number - len(self.alive_monsters)
             coins_text = f"{coins_text} | Monsters: {defeated_monsters_number} / {monsters_number}"
         self.coins_surface = self.info_font.render(
             coins_text, True, "black", "white"
@@ -304,14 +309,17 @@ class Level(Serializable):
             "block": Block,
             "monster": Monster,
         }
-        obj._entities = tuple([
+        obj._entities = [
             (entity_class_mapping[data["type"]]).to_internal_value(data)
             for data in entities_data
-        ])
+        ]
 
         obj._time_stop_left.set(time_stop_left)
         obj._time_stop_freeze.set(time_stop_freeze)
         obj._time_stop_idle.set(time_stop_idle)
+
+        obj._pre_update_setup()
+        obj._post_update_setup()
 
         obj.refresh_stats_text()
 
