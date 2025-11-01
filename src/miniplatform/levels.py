@@ -8,7 +8,6 @@ from miniplatform import effects
 from miniplatform.configs import config, STATIC_DIR, adjust_color
 from miniplatform.entities import Block, Lava, Coin, Player, Monster
 from miniplatform.serializers import Serializable
-from miniplatform.utils import TimeFactor
 
 
 class Level(Serializable):
@@ -28,18 +27,18 @@ class Level(Serializable):
         self.number = number
         self.is_final = is_final
 
-        self._time_stop_left = TimeFactor()
-        self._time_stop_freeze = TimeFactor()
-        self._time_stop_idle = TimeFactor()
+        self._time_stop_left = 0
+        self._time_stop_freeze = 0
+        self._time_stop_idle = 0
         self._time_stop_factors = {
-            self._time_stop_left: self.TIME_STOP,
-            self._time_stop_freeze: self.TIME_FREEZE,
-            self._time_stop_idle: self.TIME_STOP_IDLE,
+            '_time_stop_left': self.TIME_STOP,
+            '_time_stop_freeze': self.TIME_FREEZE,
+            '_time_stop_idle': self.TIME_STOP_IDLE,
         }
 
         w_width, w_height = pygame.display.get_window_size()
 
-        self._time_reset_factor = TimeFactor()
+        self._time_reset_factor = 0
         self._time_reset_screen = pygame.Surface((w_width, w_height))
         self._time_reset_screen.fill((255, 255, 255))
         self._time_reset_screen.set_alpha(0)
@@ -71,6 +70,9 @@ class Level(Serializable):
         self.is_complete = False
         self.is_time_stopped = False
 
+        self.speed_factor = 1
+        self.time_acceleration = 1
+
         self.has_win_condition = False
 
         self.info_font = pygame.font.Font(None, 24)
@@ -81,8 +83,8 @@ class Level(Serializable):
         self.player = None
 
         for factor in self._time_stop_factors:
-            factor.set(0)
-        self._time_reset_factor.set(0)
+            setattr(self, factor, 0)
+        self._time_reset_factor = 0
 
         self._entities.clear()
 
@@ -138,12 +140,11 @@ class Level(Serializable):
         self.player.render(screen)
         for entity in self.active_entities:
             entity.render(screen)
-        if self._time_reset_factor:
-            alpha = int(self._time_reset_factor.value * 255)
+        if self._time_reset_factor > 0:
+            alpha = int(self._time_reset_factor * 255)
             self._time_reset_screen.set_alpha(alpha)
             screen.blit(self._time_reset_screen, (0, 0))
         self._draw_infographics(screen)
-
 
     def _pre_update_setup(self):
         for l in (
@@ -171,73 +172,69 @@ class Level(Serializable):
     def _post_update_setup(self):
         self.is_running = not (self.player.is_dead or self.player.is_winner)
         self.is_complete = self.player.is_winner
-        self.is_time_stopped = any([self._time_stop_left, self._time_stop_freeze])
+        self.is_time_stopped = any(value > 0 for value in (self._time_stop_left, self._time_stop_freeze))
 
-    @property
-    def speed_factor(self):
-        if self._time_stop_left:
-            return 0
+        if self._time_reset_factor <= 0:
+            time_acceleration = 1
+        else:
+            t = self._time_reset_factor
+            time_acceleration = 1 + self.TIME_ACCELERATION_SCALE * ((1 / (1 + math.exp(-t))) - 0.5)
+        self.time_acceleration = time_acceleration
 
-        if self._time_stop_freeze:
-            return (self.TIME_FREEZE - self._time_stop_freeze.value) / self.TIME_FREEZE
-
-        if self._time_reset_factor:
-            return self.time_acceleration
-
-        return 1
-
-    @property
-    def time_acceleration(self):
-        if not self._time_reset_factor:
-            return 1
-
-        t = self._time_reset_factor.value
-        return 1 + self.TIME_ACCELERATION_SCALE * ((1 / (1 + math.exp(-t))) - 0.5)
-
-    @time_acceleration.setter
-    def time_acceleration(self, value):
-        self._time_reset_factor.set(value)
+        if self._time_stop_left > 0:
+            speed_factor = 0
+        elif self._time_stop_freeze > 0:
+            speed_factor = (self.TIME_FREEZE - self._time_stop_freeze) / self.TIME_FREEZE
+        elif self._time_reset_factor > 0:
+            speed_factor = self.time_acceleration
+        else:
+            speed_factor = 1
+        self.speed_factor = speed_factor
 
     def set_time_stop(self):
-        if not (self._time_stop_left or self._time_stop_idle):
+        if all(value <= 0 for value in (self._time_stop_left, self._time_stop_freeze, self._time_stop_idle)):
             logging.info("Stopping time ...")
             for factor, value in self._time_stop_factors.items():
-                factor.set(value)
-            if self._time_reset_factor:
+                setattr(self, factor, value)
+            if self._time_reset_factor > 0:
                 effects.Sound.WORLD_RESET.pause()
             effects.Sound.TIME_STOP.play()
 
     def _handle_time_stop(self, time):
-        is_frozen_before = bool(self._time_stop_freeze)
+        is_frozen_before = self._time_stop_freeze > 0
         for factor in self._time_stop_factors:
-            if factor:
-                factor -= time * self.time_acceleration  # decreasing one by one, not all at once
+            factor_value = getattr(self, factor)
+            if factor_value > 0:
+                factor_value -= time * self.time_acceleration  # decreasing one by one, not all at once
+                setattr(self, factor, factor_value)
                 break
-        if self._time_stop_left or self._time_stop_freeze:
-            charge = sum([factor.value for factor in (self._time_stop_left, self._time_stop_freeze)])
+
+        stop_factor_values = (self._time_stop_left, self._time_stop_freeze)
+        if any(value > 0 for value in stop_factor_values):
+            charge = sum(stop_factor_values)
             total_charge = sum((self.TIME_STOP, self.TIME_FREEZE))
             self.time_stop_bar.width = int(self.BAR_WIDTH * (charge / total_charge))
-        elif self._time_stop_idle:
-            scale = (self.TIME_STOP_IDLE - self._time_stop_idle.value) / self.TIME_STOP_IDLE
+        elif self._time_stop_idle > 0:
+            scale = (self.TIME_STOP_IDLE - self._time_stop_idle) / self.TIME_STOP_IDLE
             self.time_stop_bar.width = int(self.BAR_WIDTH * scale)
 
-        if self._time_stop_left:
+        if self._time_stop_left > 0:
             color_factor = 0
-        elif self._time_stop_freeze:
-            color_factor =  1 - (self._time_stop_freeze.value / self.TIME_FREEZE)
+        elif self._time_stop_freeze > 0:
+            color_factor =  1 - (self._time_stop_freeze / self.TIME_FREEZE)
         else:
             color_factor = 1
         config.color_factor = color_factor
 
-        if not self._time_stop_freeze and is_frozen_before:
+        if self._time_stop_freeze <= 0 and is_frozen_before:
             effects.Sound.TIME_STOP.stop()
             effects.Sound.WORLD_RESET.unpause()
 
     def _draw_infographics(self, screen):
         pygame.draw.rect(screen, "gray", self.time_stop_back_bar)
-        if self._time_stop_left or self._time_stop_freeze:
+        if any(value > 0 for value in (self._time_stop_left, self._time_stop_freeze)):
             time_left_text_color = adjust_color((0, 255, 0))
-        elif self._time_stop_idle:
+        elif self._time_stop_idle > 0:
             time_left_text_color = (0, 125, 0)
         else:
             time_left_text_color = (0, 255, 0)
@@ -248,7 +245,7 @@ class Level(Serializable):
         screen.blit(self.coins_surface, coins_text_pos)
 
         if self._game_time_to_reset_factor is not None:
-            time_left = self._game_time_to_reset_factor.value
+            time_left = self._game_time_to_reset_factor
             if self.is_time_stopped:
                 time_left_text = f"ZA WARUDO!"
                 time_left_text_color = "goldenrod"
@@ -314,9 +311,9 @@ class Level(Serializable):
             for data in entities_data
         ]
 
-        obj._time_stop_left.set(time_stop_left)
-        obj._time_stop_freeze.set(time_stop_freeze)
-        obj._time_stop_idle.set(time_stop_idle)
+        obj._time_stop_left = time_stop_left
+        obj._time_stop_freeze = time_stop_freeze
+        obj._time_stop_idle = time_stop_idle
 
         obj._pre_update_setup()
         obj._post_update_setup()
@@ -333,7 +330,7 @@ class Level(Serializable):
             "level_map": self.level_map,
             "number": self.number,
             "is_final": self.is_final,
-            "_time_stop_left": self._time_stop_left.value,
-            "_time_stop_freeze": self._time_stop_freeze.value,
-            "_time_stop_idle": self._time_stop_idle.value,
+            "_time_stop_left": self._time_stop_left,
+            "_time_stop_freeze": self._time_stop_freeze,
+            "_time_stop_idle": self._time_stop_idle,
         }
