@@ -248,7 +248,7 @@ class Level(Serializable):
         if self.game_time_to_reset_factor is not None:
             time_left = self.game_time_to_reset_factor
             if self.is_time_stopped:
-                time_left_text = f"ZA WARUDO!"
+                time_left_text = "ZA WARUDO!"
                 time_left_text_color = "goldenrod"
             elif time_left > 0:
                 time_left_text = f"Time left: {time_left // 1000}"
